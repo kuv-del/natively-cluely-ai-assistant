@@ -1554,6 +1554,13 @@ function applyPatches(stagingDir: string): boolean {
         }
 
         if (count === 0) {
+          // Idempotency check: if the replacement text is already in the file,
+          // a prior rebuild already applied this patch. Treat as success.
+          if (content.includes(patch.replace)) {
+            console.log(`   ✅ ${patch.description} (already applied)`);
+            applied++;
+            continue;
+          }
           if ((patch as any).required) {
             console.error(`   ❌ REQUIRED patch not found: "${patch.description}"`);
             console.error(`      Looking for: ${(findStr as string).substring(0, 80).replace(/\n/g, "\\n")}...`);
