@@ -60,6 +60,7 @@ import { analytics, detectProviderType } from '../lib/analytics/analytics.servic
 import { useShortcuts } from '../hooks/useShortcuts';
 import { useResolvedTheme } from '../hooks/useResolvedTheme';
 import { getOverlayAppearance, OVERLAY_OPACITY_DEFAULT } from '../lib/overlayAppearance';
+import type { DealDetailsResponse } from '../types/deal-details';
 
 interface Message {
     id: string;
@@ -85,6 +86,67 @@ interface Message {
 interface NativelyInterfaceProps {
     onEndMeeting?: () => void;
     overlayOpacity?: number;
+}
+
+// backlog 1.10: build a "Prospect Context" block from dealContext for LLM prompts.
+// Standalone (outside component) so it can be called from any scope without hoisting issues.
+function buildProspectContextSection(ctx: DealDetailsResponse | null, maxChars = 8000): string {
+    if (!ctx) return '';
+    const parts: string[] = [];
+    const contactName = [ctx.contact?.first_name, ctx.contact?.last_name].filter(Boolean).join(' ') || 'Unknown';
+    const company = ctx.company?.company_name || 'Unknown Company';
+    const dealStage = ctx.deal?.deal_stage || 'unknown';
+    const sdrOwner = ctx.deal?.sdr_owner_name || 'unknown';
+    parts.push(`PROSPECT: ${contactName} at ${company}`);
+    parts.push(`Deal stage: ${dealStage} | SDR: ${sdrOwner}`);
+
+    // Prep dossier from upcoming meeting
+    const dossier = ctx.upcoming_meeting?.prep_dossier;
+    if (dossier) {
+        const dossierParts: string[] = [];
+        if (dossier.pain_points?.length) {
+            dossierParts.push(`Pain points: ${(dossier.pain_points as string[]).slice(0, 3).join('; ')}`);
+        }
+        if (dossier.talking_points?.length) {
+            dossierParts.push(`Talking points: ${(dossier.talking_points as string[]).slice(0, 3).join('; ')}`);
+        }
+        if (dossier.research) {
+            dossierParts.push(`Research: ${String(dossier.research).slice(0, 300)}`);
+        }
+        if (dossierParts.length) {
+            parts.push(`\nPrep Dossier:\n${dossierParts.join('\n')}`);
+        }
+    }
+
+    // Up to 2 most recent summaries per meeting type
+    const meetingTypes: Array<keyof typeof ctx.meetings_by_type> = ['discovery', 'demo', 'followup'];
+    for (const mType of meetingTypes) {
+        const group = ctx.meetings_by_type[mType];
+        if (!group?.length) continue;
+        const recent = group.slice(-2);
+        for (const item of recent) {
+            if (item.summary) {
+                const dateStr = item.meeting.start_time ? item.meeting.start_time.slice(0, 10) : '';
+                parts.push(`\n${mType} call summary (${dateStr}): ${String(item.summary).slice(0, 400)}`);
+            }
+        }
+    }
+
+    // SDR notes (truncated per note)
+    if (ctx.sdr_notes?.length) {
+        const noteLines = ctx.sdr_notes.slice(0, 3).map(n =>
+            `- ${String(n.full_note || '').slice(0, 500)}`
+        );
+        parts.push(`\nSDR Notes:\n${noteLines.join('\n')}`);
+    }
+
+    // Cumulative deal summary (Stage 4 field — safe optional chaining)
+    if (ctx.cumulative_summary?.summary_markdown) {
+        parts.push(`\nCumulative deal narrative:\n${ctx.cumulative_summary.summary_markdown.slice(0, 600)}`);
+    }
+
+    const full = parts.join('\n');
+    return full.length > maxChars ? full.slice(0, maxChars) + '\n[...truncated]' : full;
 }
 
 const NativelyInterface: React.FC<NativelyInterfaceProps> = ({ onEndMeeting, overlayOpacity = OVERLAY_OPACITY_DEFAULT }) => {
@@ -135,6 +197,10 @@ const NativelyInterface: React.FC<NativelyInterfaceProps> = ({ onEndMeeting, ove
 
     // Latent Context State (Screenshots attached but not sent)
     const [attachedContext, setAttachedContext] = useState<Array<{ path: string, preview: string }>>([]);
+
+    // backlog 1.10: prospect bundle fetched at startMeeting time
+    const [dealContext, setDealContext] = useState<DealDetailsResponse | null>(null);
+    const dealContextRef = useRef<DealDetailsResponse | null>(null);
 
     // Settings State with Persistence
     const [isUndetectable, setIsUndetectable] = useState(false);
@@ -319,14 +385,20 @@ const NativelyInterface: React.FC<NativelyInterfaceProps> = ({ onEndMeeting, ove
     }, []);
 
     // Build conversation context from messages
+    // backlog 1.10: also prepend prospect context section when available
     useEffect(() => {
-        const context = messages
+        const transcriptLines = messages
             .filter(m => m.role !== 'user' || !m.hasScreenshot)
             .map(m => `${m.role === 'interviewer' ? 'Interviewer' : m.role === 'user' ? 'User' : 'Assistant'}: ${m.text}`)
             .slice(-20)
             .join('\n');
+        const prospectSection = buildProspectContextSection(dealContext, 4000);
+        const context = prospectSection
+            ? `${prospectSection}\n\nCONVERSATION:\n${transcriptLines}`
+            : transcriptLines;
         setConversationContext(context);
-    }, [messages]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [messages, dealContext]);
 
     // Listen for settings window visibility changes
     useEffect(() => {
@@ -383,11 +455,24 @@ const NativelyInterface: React.FC<NativelyInterfaceProps> = ({ onEndMeeting, ove
             setManualTranscript('');
             setVoiceInput('');
             setIsProcessing(false);
-            // Optionally reset connection status if needed, but connection persists
 
-            // Track new conversation/session if applicable?
-            // Actually 'app_opened' is global, 'assistant_started' is overlay.
-            // Maybe 'conversation_started' event?
+            // backlog 1.10: load deal context that was pre-fetched at startMeeting IPC time
+            if (window.electronAPI?.sessionGetDealContext) {
+                window.electronAPI.sessionGetDealContext().then((ctx: DealDetailsResponse | null) => {
+                    setDealContext(ctx);
+                    dealContextRef.current = ctx;
+                    if (ctx?.contact) {
+                        const name = [ctx.contact.first_name, ctx.contact.last_name].filter(Boolean).join(' ');
+                        console.log(`[NativelyInterface] dealContext loaded for contact: ${name || 'unknown'}`);
+                    }
+                }).catch((err: unknown) => {
+                    console.warn('[NativelyInterface] sessionGetDealContext failed (non-fatal):', err);
+                });
+            } else {
+                setDealContext(null);
+                dealContextRef.current = null;
+            }
+
             analytics.trackConversationStarted();
         });
         return () => unsubscribe();
@@ -1269,13 +1354,16 @@ Instructions:
                     }
 
                     // Voice Only (Smart Extract) — fallback
-                    prompt = `You are a real-time interview assistant. The user just repeated or paraphrased a question from their interviewer.
+                    // backlog 1.10: inject prospect context when available
+                    const prospectSection = buildProspectContextSection(dealContextRef.current);
+                    prompt = `You are a real-time sales meeting assistant helping Kate during a live call.${prospectSection ? `\n\n${prospectSection}` : ''}
 Instructions:
-1. Extract the core question being asked
-2. Provide a clear, concise, and professional answer that the user can say out loud
-3. Keep the answer conversational but informative (2-4 sentences ideal)
-4. Do NOT include phrases like "The question is..." - just give the answer directly
-5. Format for speaking out loud, not for reading
+1. Extract the core question or topic being asked
+2. Provide a clear, concise, and helpful answer Kate can say out loud or act on
+3. Keep the answer conversational and informative (2-4 sentences ideal)
+4. Reference the prospect context above when relevant (pain points, deal stage, prior call notes)
+5. Do NOT include phrases like "The question is..." - just give the answer directly
+6. Format for speaking out loud, not for reading
 
 Provide only the answer, nothing else.`;
                 }

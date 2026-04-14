@@ -278,6 +278,9 @@ export interface ElectronAPI {
   // Convex deal details lookup (DealDetails page)
   convexGetDealDetails: (contactId: string) => Promise<import('./deal-details').DealDetailsResponse | { error: string } | null>
 
+  // backlog 1.10: retrieve deal context already stored in SessionTracker for the live call
+  sessionGetDealContext: () => Promise<import('./deal-details').DealDetailsResponse | null>
+
   // Script Helper (pre-call briefing pane)
   scriptHelperOpen: (eventId?: string) => Promise<{ success: boolean; error?: string }>
   scriptHelperClose: () => Promise<{ success: boolean }>
