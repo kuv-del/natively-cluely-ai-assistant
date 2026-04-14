@@ -349,6 +349,8 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
     const [forwardMeeting, setForwardMeeting] = useState<Meeting | null>(null);
     const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
     const [menuEntered, setMenuEntered] = useState(false);
+    // Deal pill per-meeting state: 'idle' | 'loading' | 'no_deal'
+    const [dealPillState, setDealPillState] = useState<Record<string, 'idle' | 'loading' | 'no_deal'>>({});
 
     useEffect(() => {
         setMenuEntered(false);
@@ -421,6 +423,12 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
     };
 
     const handleOpenDealDetails = (contactId: string) => {
+        setSelectedDealContactId(contactId);
+        setSelectedMeeting(null);
+    };
+
+    // Deal pill: async-fetch meeting profile → open DealDetails for its contact
+    const handleOpenDealFromMain = (contactId: string) => {
         setSelectedDealContactId(contactId);
         setSelectedMeeting(null);
     };
@@ -933,8 +941,54 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
                                                             className="group relative flex items-center justify-between px-3 py-2 rounded-lg bg-transparent hover:bg-bg-elevated transition-colors"
                                                             onClick={() => handleOpenMeeting(m)}
                                                         >
-                                                            <div className={`font-medium text-[14px] max-w-[60%] truncate ${m.title === 'Processing...' ? 'text-blue-400 italic animate-pulse' : 'text-text-primary'}`}>
-                                                                {m.title}
+                                                            {/* Title + Deal pill */}
+                                                            <div className="flex items-center gap-2 min-w-0 max-w-[60%]">
+                                                                <div className={`font-medium text-[14px] truncate ${m.title === 'Processing...' ? 'text-blue-400 italic animate-pulse' : 'text-text-primary'}`}>
+                                                                    {m.title}
+                                                                </div>
+                                                                {/* Deal pill — only shown for meetings with a calendarEventId */}
+                                                                {m.calendarEventId && (
+                                                                    <button
+                                                                        onClick={async (e) => {
+                                                                            e.stopPropagation();
+                                                                            const mId = m.id;
+                                                                            const pillState = dealPillState[mId];
+                                                                            if (pillState === 'loading') return;
+                                                                            setDealPillState((prev) => ({ ...prev, [mId]: 'loading' }));
+                                                                            try {
+                                                                                const profile = await window.electronAPI?.convexGetMeetingProfile?.(m.calendarEventId!);
+                                                                                const contactId = profile?.meeting?.contact_id;
+                                                                                if (contactId) {
+                                                                                    handleOpenDealFromMain(contactId);
+                                                                                    setDealPillState((prev) => ({ ...prev, [mId]: 'idle' }));
+                                                                                } else {
+                                                                                    setDealPillState((prev) => ({ ...prev, [mId]: 'no_deal' }));
+                                                                                    setTimeout(() => {
+                                                                                        setDealPillState((prev) => ({ ...prev, [mId]: 'idle' }));
+                                                                                    }, 2000);
+                                                                                }
+                                                                            } catch {
+                                                                                setDealPillState((prev) => ({ ...prev, [mId]: 'no_deal' }));
+                                                                                setTimeout(() => {
+                                                                                    setDealPillState((prev) => ({ ...prev, [mId]: 'idle' }));
+                                                                                }, 2000);
+                                                                            }
+                                                                        }}
+                                                                        className={`shrink-0 px-2 py-0.5 rounded-full text-[10px] font-medium border transition-colors whitespace-nowrap ${
+                                                                            dealPillState[m.id] === 'no_deal'
+                                                                                ? 'bg-red-500/10 text-red-400 border-red-500/20'
+                                                                                : isLight
+                                                                                    ? 'bg-orange-50 text-orange-500 border-orange-300/60 hover:bg-orange-100'
+                                                                                    : 'bg-orange-500/10 text-orange-400 border-orange-500/20 hover:bg-orange-500/20'
+                                                                        }`}
+                                                                    >
+                                                                        {dealPillState[m.id] === 'loading'
+                                                                            ? '…'
+                                                                            : dealPillState[m.id] === 'no_deal'
+                                                                            ? 'No deal'
+                                                                            : 'Deal'}
+                                                                    </button>
+                                                                )}
                                                             </div>
 
                                                             {/* Time & Duration Section */}
