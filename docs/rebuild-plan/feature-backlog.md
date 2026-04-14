@@ -4,6 +4,45 @@ Features Kate has confirmed she wants but that we're not building right now. Lis
 
 ---
 
+## Architectural decisions locked (2026-04-14)
+
+These are load-bearing — everything below inherits from them.
+
+### Contact-first workflow
+Kate sells to company owners directly — **the contact IS the deal**. All new Natively-side queries, endpoints, and schema additions key on `contact_id` as the primary anchor. `deal_id` and `company_id` remain present for backward compatibility with gobot's existing HubSpot/deal pipeline, but Natively's read/write path uses `contact_id` first. New DealDetails endpoint is `GET /natively/deal-details?contact_id=...`, not `?deal_id=...`.
+
+### Dual-pool Convex structure
+Existing shared tables (`call_transcripts`, `meetings`, `deals`, `contacts`, `companies`) are untouched. **New Natively-private tables sit alongside them**, all FK'd to `contact_id`:
+- `natively_transcripts`
+- `natively_summaries`
+- `natively_preps`
+- `natively_notes` (running prospect notes, cumulative across meetings)
+
+Natively writes only to the private pool. Other gobot pipelines (zoom-transcript-sync, discovery-transcript-sync, slack-triage-sync) continue writing to the shared pool as they do today.
+
+### Read precedence: Natively-first with shared-pool fallback
+When Natively (or DealDetails) loads prospect context, the Convex endpoint unions the two pools with **Natively winning on dedup by `calendar_event_id`**:
+1. Fetch all Natively-private rows for this `contact_id`
+2. Fetch all shared-pool rows for this `contact_id`
+3. Exclude any shared-pool row whose `calendar_event_id` is already in the Natively set
+4. Return the merged set sorted chronologically
+
+This means: if Kate ran Natively for the demo and Zoom backup for the discovery, she sees both — Natively's richer data for the demo, Zoom's transcript for the discovery. If Kate ran Natively for both, Zoom duplicates are silently filtered out.
+
+### Natively as the primary engine
+- Natively is the canonical capture surface for Kate's own calls going forward
+- Zoom transcript sync stays as a safety net for calls Kate forgot to start Natively on
+- SDR discovery transcript sync + SDR Slack note sync continue as-is — Natively reads them from the shared pool but doesn't overwrite them
+- Local SQLite in Natively becomes a **current-week cache only** — historical lookups go to Convex. Cache retention: keep current week + the week prior, let older data age out
+
+### Slack notes: Slack → Convex → Notion (not Slack → Notion directly)
+Current `src/slack-triage-sync.ts` writes straight to Notion. Flip it so:
+1. **Primary path:** Slack → Convex `sdr_notes` table (new). This is the source of truth.
+2. **Secondary script:** new `scripts/sync-sdr-notes-to-notion.ts` reads unsynced rows from Convex and pushes to Notion as a backup surface.
+3. **Later cleanup** (see Phase 1 item 1.12 below): once Natively is live and Kate isn't using Notion for meeting review, delete the Convex→Notion sync script entirely. Notion stops being a dependency.
+
+---
+
 ## Phased roadmap (Kate's framing — 2026-04-13)
 
 ### Phase 1 — foundation + immediate sales loop
@@ -21,6 +60,11 @@ Features Kate has confirmed she wants but that we're not building right now. Lis
 | 1.7 | **Test HubSpot updates** — actually fire the approved Next Steps actions through to HubSpot (ship the gobot endpoint that PATCHes deals directly, no Notion in the loop). | Phase 1 |
 | 1.8 | **"SCO" marker on meetings** — Kate wants this **tomorrow**. Visual indicator on calendar events / meeting list rows that distinguishes Scalable Co. sales meetings from personal/other meetings. Likely a small badge or color tag derived from whether the contact has a HubSpot deal in Convex. | **Tomorrow** |
 | 1.9 | **Past calls auto-merged into upcoming/current call's Prep tab** — when Kate opens the Prep tab for an upcoming or in-progress meeting, automatically pull in summaries + transcripts + key signals from ALL prior calls with the same contact (SDR call, prior discovery, prior demo, follow-ups). Renders as a "Previous Conversations" section in the Prep tab — chronological, with each prior call's date / type / summary expandable. Different from past-meetings pills (1.2) which are navigation; this is in-place context aggregation. Both surfaces are powered by the same Convex query once storage is unified. | Phase 1 |
+| 1.10 | **Hydrate in-call overlay with prospect context at startMeeting** — today the overlay (`NativelyInterface`) receives only `calendarEventId` + audio device info when a meeting starts. It has zero context during the live call: no prep dossier, no contact/deal info from Convex, no prior transcripts, no SDR notes. All coaching is done on the live transcript alone. Fix: when `startMeeting` IPC fires, bundle up and pass into the overlay: (a) prep dossier JSON, (b) `/natively/meeting-profile` payload (contact + company + deal), (c) prior meetings' summaries + transcripts for the same `contact_id` / `deal_id`, (d) SDR triage notes if present. Store on `SessionTracker.currentMeetingMetadata` so the RAG pipeline, in-call chat overlay (`MeetingChatOverlay`), and AI suggestion generators can all read from it. Depends on: 1.1 (storage unification — so prior transcripts actually exist in Convex) and the Prospect-tab query (the same cumulative bundle powers both). Circle back after 1.1 + Prospect tab are in. | Phase 1 |
+| 1.11 | **MeetingDetails chat can reach every tab (not just transcript + summary)** — today the chat input at the bottom of MeetingDetails calls `rag:query-meeting`, which only indexes full transcript + summary overview + key points + action items. It cannot see the Prep dossier, the Profile tab's Convex data (contact/company/deal), or the Usage log. Fallback path (when RAG isn't ready) additionally caps transcript at the last 20 turns. Fix in two stages: (a) quick win — extend `buildContextString()` in `MeetingChatOverlay` to also include the prep dossier + profile payload so fallback-mode chat immediately gets richer context (~20-line change, no RAG pipeline touch); (b) bigger win — once DealDetails lands, re-scope the chat from meeting-scoped to contact-scoped, pulling in prior meetings' transcripts + SDR notes via the same cumulative Convex query. Related to 1.10 (overlay hydration) — they both want the same bundle in different surfaces. | Phase 1 |
+| 1.12 | **Remove Notion endpoints once Natively is live** — cleanup item. Once Kate is using DealDetails as her primary surface for meeting review and deal context, and she's confident nothing else in her workflow still depends on Notion meeting pages, delete: (a) `scripts/sync-sdr-notes-to-notion.ts` (Convex→Notion backup), (b) the Notion push in `src/zoom-transcript-sync.ts` `convex.action(api.notionSync.pushToNotion)`, (c) the Notion sub-item creation in `src/discovery-transcript-sync.ts`, (d) `convex/notionSync.ts` entirely if nothing else calls it. Success criterion: gobot can run with `NOTION_TOKEN` unset and the sales pipeline is unaffected. Do NOT touch Notion MCP server (`src/lib/actions/notion-mcp-server.ts`) — Kate still uses Notion for personal knowledge/tasks, this cleanup only targets the sales-meeting writeback paths. | After Natively is live |
+| 1.13 | **DealDetails page** — new cumulative-per-contact page that sits alongside MeetingDetails (MeetingDetails stays 1:1 per meeting, untouched). Contact-first: keyed by `contact_id` because the contact IS the deal. Header: `{First} {Last} — {Company}`. Tabs: **Discovery Call \| Demo Call \| Follow Up \| Summary \| Prep \| Profile \| Grade**. Each meeting-type tab shows per-call summary up top + transcript below, with secondary pills if there are multiple calls of that type. Summary tab is a cumulative deal narrative synthesized across all calls. Prep tab shows the dossier for the next upcoming meeting. Profile tab reuses the existing MeetingDetails Profile view. Grade tab is a placeholder for 1.14. Nav entry point: "View Deal" button on MeetingDetails header (only renders when the meeting has a linked `contact_id`). See "DealDetails waterfall" section below for the full build order. | Phase 1 |
+| 1.14 | **Deal grading assessment (Grade tab)** — future build. Placeholder tab in the DealDetails page today. Eventually renders a structured scoring rubric for the deal: MEDDIC coverage, urgency, intent, qualification status, stakeholder map, offer state, next-step clarity. Generated by a dedicated scoring prompt that reads the cumulative deal summary + all per-meeting summaries + the prep dossier + the SDR notes and outputs a numerical score (1-10) across each dimension plus a narrative verdict. Stores to a new `deal_grades` table in Convex keyed by `contact_id` with history (one row per regeneration so Kate can see the score move over time). Triggered manually from the tab via a "Regenerate grade" button, and automatically after any new transcript + summary lands for this contact. **Depends on:** 1.13 DealDetails scaffold + Stage 1 summary generation job + Stage 4 cumulative summary. **Model:** Claude Sonnet via local Max plan (same runner as summary jobs). | Phase 1, after 1.13 lands |
 
 ### Phase 2 — meeting lifecycle popups + task blocks
 
@@ -56,6 +100,135 @@ Features Kate has confirmed she wants but that we're not building right now. Lis
 ### Side note — verify before building
 
 - **Cross-meeting search.** Kate says she might already have this via the search bar at the top of the Launcher. Verify before scoping a new feature. The current Launcher header has a search input but I haven't traced whether it's wired to anything beyond meeting titles.
+
+---
+
+## DealDetails waterfall — ordered build plan (2026-04-14)
+
+This is the ordered sequence to ship DealDetails (backlog 1.13). Each stage has an explicit test gate. Do NOT start the next stage until the previous one is verified by Kate.
+
+### Dependency graph
+```
+Stage 0: Foundational plumbing (this session)
+  ├─ Convex schema: new Natively-private tables (natively_*) + sdr_notes table
+  ├─ Convex module: sdrNotes.ts (mutations/queries)
+  ├─ Slack triage sync flip: Slack → Convex primary, Notion secondary
+  └─ New script: scripts/sync-sdr-notes-to-notion.ts (Convex → Notion backup)
+        ↓
+Stage 1: Backend data layer for DealDetails
+  ├─ Convex query: dealDetailsByContactId(contact_id) — unions Natively-private + shared pool
+  ├─ Convex HTTP endpoint: GET /natively/deal-details?contact_id=
+  ├─ meetings.summary_markdown field (for per-meeting summaries)
+  └─ Summary generation job on Mac via launchd + Claude Max subprocess
+        ↓
+Stage 2: DealDetails scaffold + navigation (Natively side)
+        ↓
+Stage 3: Wire the tabs one at a time (Profile → Prep → Discovery → Demo → FollowUp)
+        ↓
+Stage 4: Cumulative Summary tab (Claude Sonnet via Max, synthesizes per-meeting summaries)
+        ↓
+Stage 5: Storage unification (backlog 1.1) — Natively write-through to natively_* tables
+        ↓
+Stage 6: Grade tab (backlog 1.14) — deal grading assessment
+```
+
+Stages 0-4 can all ship without waiting for 1.1. Zoom + Gong transcripts already flow into the shared pool, so DealDetails can be meaningfully populated today. Natively-recorded calls light up automatically once Stage 5 lands.
+
+---
+
+### Stage 0 — Foundational plumbing (in progress)
+
+**Build:**
+1. Add new tables to `convex/schema.ts`:
+   - `natively_transcripts` — keyed by `contact_id`; fields: `meeting_id?`, `calendar_event_id`, `segments`, `transcript`, `duration_seconds`, `source="natively"`, timestamps
+   - `natively_summaries` — keyed by `contact_id`; fields: `meeting_id?`, `calendar_event_id?`, `summary_type` ("per_meeting" | "cumulative_deal"), `summary_markdown`, `generated_from`, timestamps
+   - `natively_preps` — keyed by `contact_id`; fields: `meeting_id?`, `calendar_event_id`, `dossier` (any), timestamps
+   - `natively_notes` — keyed by `contact_id`; fields: `notes_markdown`, `updated_at`
+   - `sdr_notes` — keyed by `contact_id`; fields: `prospect_name`, `company_name`, `full_note`, `slack_ts`, `notion_synced_at?`, `source="slack"`, timestamps
+2. New Convex module `convex/sdrNotes.ts` with `saveSdrNote` mutation (upsert by `slack_ts`), `getByContact` query, `listPendingNotionSync` query
+3. Update `src/slack-triage-sync.ts` to call `convex.mutation(api.sdrNotes.saveSdrNote, ...)` before the existing Notion write. Keep the Notion write for now (zero-downtime transition)
+4. Create `scripts/sync-sdr-notes-to-notion.ts` — reads `listPendingNotionSync`, pushes to Notion, marks synced
+5. Deploy Convex via `bunx convex dev --once`
+6. Test: verify a known SDR note writes to Convex, then verify the new Notion sync script picks it up
+
+**Test gate:** Manually invoke `bun run src/slack-triage-sync.ts`. Check Convex dashboard — see new rows in `sdr_notes`. Run new Convex→Notion script. Check Notion — see the same note appear. **Kate verifies both surfaces.**
+
+**Effort:** 2-3 hours (includes schema + two scripts + test).
+
+### Stage 1 — Backend data layer for DealDetails
+**Build:**
+1. Add `meetings.summary_markdown` field to schema (nullable string)
+2. New Convex query in `convex/meetingsFns.ts` (or new `convex/dealDetailsFns.ts`): `dealDetailsByContactId(contact_id)`. Returns:
+   ```
+   {
+     contact, company, deal,
+     meetings_by_type: {
+       discovery: [{meeting, transcript, summary}],
+       demo: [{...}],
+       followup: [{...}],
+       sdr_triage: [{...}],  // SDR discovery calls from Gong
+     },
+     upcoming_meeting: {meeting, prep_dossier},
+     sdr_notes: [...],
+     prospect_notes: {notes_markdown}  // from natively_notes
+   }
+   ```
+   Internal logic: for each meeting-type group, union Natively-private transcripts/summaries (from `natively_*` tables) with shared-pool transcripts/summaries (from `call_transcripts` joined via `meeting_id`), Natively wins on dedup by `calendar_event_id`.
+3. HTTP wrapper in `convex/http.ts`: `GET /natively/deal-details?contact_id=...`
+4. New bun script `scripts/generate-meeting-summaries.ts` — finds meetings with transcripts but no `summary_markdown`, calls `claude -p` subprocess against Max plan, writes summary back. Also fills `natively_summaries` rows for Natively-captured calls that lack summaries.
+5. New launchd plist `com.go.summary-gen.plist` — runs every 15 min, `StartCalendarInterval`
+6. Make sure script ends with `process.exit(0)` (Convex WebSocket keep-alive gotcha)
+
+**Test gate:** Curl the endpoint for a known prospect — verify grouped structure. Run summary gen script on a known transcript — verify summary appears in Convex. Install launchd job, verify it fires on schedule.
+
+**Effort:** 3-4 hours.
+
+### Stage 2 — DealDetails scaffold + navigation entry
+**Build:**
+1. New component `src/components/DealDetails.tsx`. Structural duplicate of `MeetingDetails.tsx`. Tabs: Discovery Call · Demo Call · Follow Up · Summary · Prep · Profile · Grade
+2. Header: `{contact.first_name} {contact.last_name} — {company.name}` from endpoint
+3. `Launcher.tsx` state: add `selectedDealContactId: Id<"contacts"> | null`. Non-null → render `<DealDetails contactId={selectedDealContactId} />` instead of MeetingDetails
+4. New IPC `convex-get-deal-details(contact_id)` → hits the Stage 1 endpoint
+5. Nav entry point: "View Deal" button in MeetingDetails header. Only renders when `profile.meeting.contact_id` is non-null. Clicking sets `selectedDealContactId` via callback prop, unmounts MeetingDetails, mounts DealDetails
+
+**Test gate:** Click a meeting with a linked contact → "View Deal" → DealDetails opens with the correct header. All tabs render empty states. Back button returns to meeting list. **Navigation verified before touching tab content.**
+
+**Effort:** 1-1.5 hours.
+
+### Stage 3 — Wire the tabs one at a time
+
+**3a. Profile tab** — import existing ProfileView, pass `{ contact, company, deal }`. Test: visually identical to MeetingDetails Profile tab. *(~15 min)*
+
+**3b. Prep tab** — render `upcoming_meeting.prep_dossier` via existing `DossierView`. Empty state "No upcoming meeting with this prospect" when null. *(~30 min)*
+
+**3c. Discovery Call tab + Demo Call tab + Follow Up tab** (identical structure, build once, parametrize by `meeting_type`):
+- If zero meetings of this type: empty state "No {type} calls yet for this prospect"
+- If one meeting: single block with summary top, transcript bottom, "Open meeting →" link in corner
+- If multiple: secondary pill row at top ("Call 1 · Call 2 · Call 3", oldest left) that switches between them; same block below
+- Summary section reads `summary_markdown`; placeholder "Summary generating…" if null (Stage 1 job will fill it within 15 min)
+- Transcript section reads the transcript field, monospace, scrollable
+
+**Test each meeting-type tab on a real prospect with real data before moving to the next.** *(~2 hours total)*
+
+**Effort:** 2.5-3 hours total.
+
+### Stage 4 — Cumulative Summary tab
+**Build:**
+1. New script `scripts/generate-deal-summary.ts` — takes a `contact_id`, reads all `summary_markdown` rows + `natively_summaries` rows + deal metadata, sends to Claude Sonnet via `claude -p`, writes to a new row in `natively_summaries` with `summary_type="cumulative_deal"`
+2. Triggered by the same `com.go.summary-gen` launchd job — after per-meeting summaries run, regenerate cumulative for any contact whose per-meeting summary list changed
+3. Summary tab on DealDetails queries `natively_summaries` where `summary_type="cumulative_deal"` ordered by `updated_at` desc, displays the latest
+
+**Test gate:** Pick a contact with multiple calls. Run the generator manually. Verify the output is coherent. Display in the tab.
+
+**Effort:** 1.5-2 hours.
+
+### Stage 5 — Storage unification (backlog 1.1)
+Separate session. When this lands, Natively's local saves write through to the `natively_*` tables. DealDetails automatically shows Natively-recorded calls with richer data.
+
+**Historical backfill decision (pending from Kate):** do we also backfill old local-only Natively meetings from SQLite → Convex as a one-time script during Stage 5, or leave pre-Stage-5 Natively history invisible?
+
+### Stage 6 — Grade tab (backlog 1.14)
+Separate session. Real build is the deal grading assessment — rubric + scoring prompt + `deal_grades` table + tab UI.
 
 ---
 
