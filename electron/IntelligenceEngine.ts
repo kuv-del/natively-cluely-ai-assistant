@@ -11,6 +11,41 @@ import {
     prepareTranscriptForWhatToAnswer, buildTemporalContext,
     AssistantResponse as LLMAssistantResponse, classifyIntent
 } from './llm';
+import type { DealDetailsResponse } from '../src/types/deal-details';
+
+// backlog 1.10: build a compact prospect context block for suggestion prompts.
+// Capped at ~1500 chars to stay within token budget for coaching suggestions.
+function buildSuggestionProspectBlock(ctx: DealDetailsResponse | null): string {
+    if (!ctx) return '';
+    const parts: string[] = [];
+    const contactName = [ctx.contact?.first_name, ctx.contact?.last_name].filter(Boolean).join(' ') || 'Unknown';
+    const company = ctx.company?.company_name || 'Unknown Company';
+    const dealStage = ctx.deal?.deal_stage || 'unknown';
+    parts.push(`Prospect: ${contactName} at ${company} (deal stage: ${dealStage})`);
+
+    // Top 3 pain points from prep dossier
+    const dossier = ctx.upcoming_meeting?.prep_dossier;
+    if (dossier?.pain_points?.length) {
+        const bullets = (dossier.pain_points as string[]).slice(0, 3).join('; ');
+        parts.push(`Key pain points: ${bullets}`);
+    }
+
+    // 1-2 most recent meeting summaries across all types
+    const allGroups = [
+        ...((ctx.meetings_by_type.discovery) || []),
+        ...((ctx.meetings_by_type.demo) || []),
+        ...((ctx.meetings_by_type.followup) || []),
+    ].filter(g => g.summary);
+    const recentSummaries = allGroups.slice(-2);
+    for (const item of recentSummaries) {
+        const typeLabel = item.meeting.meeting_type || 'call';
+        const dateStr = item.meeting.start_time ? item.meeting.start_time.slice(0, 10) : '';
+        parts.push(`Prior ${typeLabel} (${dateStr}): ${String(item.summary).slice(0, 300)}`);
+    }
+
+    const full = `[PROSPECT CONTEXT]\n${parts.join('\n')}\n[END PROSPECT CONTEXT]`;
+    return full.length > 1500 ? full.slice(0, 1500) + '\n...' : full;
+}
 
 // Mode types
 export type IntelligenceMode = 'idle' | 'assist' | 'what_to_say' | 'follow_up' | 'recap' | 'clarify' | 'manual' | 'follow_up_questions' | 'code_hint' | 'brainstorm';
@@ -294,13 +329,21 @@ export class IntelligenceEngine extends EventEmitter {
                 this.session.getAssistantResponseHistory().length
             );
 
-            console.log(`[IntelligenceEngine] Temporal RAG: ${temporalContext.previousResponses.length} responses, tone: ${temporalContext.toneSignals[0]?.type || 'neutral'}, intent: ${intentResult.intent}${imagePaths?.length ? `, with ${imagePaths.length} image(s)` : ''}`);
+            // backlog 1.10: prepend a compact prospect block so coaching suggestions
+            // reference deal stage, pain points, and prior call summaries.
+            const dealContext = this.session.getDealContext();
+            const prospectBlock = buildSuggestionProspectBlock(dealContext);
+            const transcriptWithProspect = prospectBlock
+                ? `${prospectBlock}\n\n${preparedTranscript}`
+                : preparedTranscript;
+
+            console.log(`[IntelligenceEngine] Temporal RAG: ${temporalContext.previousResponses.length} responses, tone: ${temporalContext.toneSignals[0]?.type || 'neutral'}, intent: ${intentResult.intent}${imagePaths?.length ? `, with ${imagePaths.length} image(s)` : ''}${prospectBlock ? ', +dealContext' : ''}`);
 
             const generationId = ++this.currentGenerationId;
             let fullAnswer = "";
             // RC-03 fix: hold a reference to the generator so we can call .return()
             // to properly terminate the network request when a new generation starts.
-            const stream = this.whatToAnswerLLM.generateStream(preparedTranscript, temporalContext, intentResult, imagePaths);
+            const stream = this.whatToAnswerLLM.generateStream(transcriptWithProspect, temporalContext, intentResult, imagePaths);
             let streamAborted = false;
 
             for await (const token of stream) {
