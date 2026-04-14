@@ -10,6 +10,7 @@ import {
     formatPhone,
     normalizeUrl,
 } from '../lib/hubspot-mapping';
+import type { DealDetailsResponse } from '../types/deal-details';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -76,7 +77,7 @@ const EmptyState: React.FC<{ message: string }> = ({ message }) => (
 
 const DealDetails: React.FC<DealDetailsProps> = ({ contactId, onBack }) => {
     const isLight = useResolvedTheme() === 'light';
-    const [data, setData] = useState<any | null>(null);
+    const [data, setData] = useState<DealDetailsResponse | null>(null);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<TabKey>('profile');
 
@@ -303,7 +304,7 @@ const DealDetails: React.FC<DealDetailsProps> = ({ contactId, onBack }) => {
                                     <EmptyState message="No discovery calls yet for this prospect." />
                                 ) : (
                                     <div className="text-[13px] text-text-secondary py-4">
-                                        {data.meetings_by_type.discovery.length} discovery call{data.meetings_by_type.discovery.length !== 1 ? 's' : ''} — content coming in Stage 3.
+                                        {data!.meetings_by_type.discovery.length} discovery call{data!.meetings_by_type.discovery.length !== 1 ? 's' : ''} — content coming in Stage 3.
                                     </div>
                                 )}
                             </motion.div>
@@ -318,7 +319,7 @@ const DealDetails: React.FC<DealDetailsProps> = ({ contactId, onBack }) => {
                                     <EmptyState message="No demo calls yet for this prospect." />
                                 ) : (
                                     <div className="text-[13px] text-text-secondary py-4">
-                                        {data.meetings_by_type.demo.length} demo call{data.meetings_by_type.demo.length !== 1 ? 's' : ''} — content coming in Stage 3.
+                                        {data!.meetings_by_type.demo.length} demo call{data!.meetings_by_type.demo.length !== 1 ? 's' : ''} — content coming in Stage 3.
                                     </div>
                                 )}
                             </motion.div>
@@ -333,7 +334,7 @@ const DealDetails: React.FC<DealDetailsProps> = ({ contactId, onBack }) => {
                                     <EmptyState message="No follow up calls yet for this prospect." />
                                 ) : (
                                     <div className="text-[13px] text-text-secondary py-4">
-                                        {data.meetings_by_type.followup.length} follow up call{data.meetings_by_type.followup.length !== 1 ? 's' : ''} — content coming in Stage 3.
+                                        {data!.meetings_by_type.followup.length} follow up call{data!.meetings_by_type.followup.length !== 1 ? 's' : ''} — content coming in Stage 3.
                                     </div>
                                 )}
                             </motion.div>

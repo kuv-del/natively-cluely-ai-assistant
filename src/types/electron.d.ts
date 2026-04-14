@@ -276,7 +276,7 @@ export interface ElectronAPI {
   } | null>
 
   // Convex deal details lookup (DealDetails page)
-  convexGetDealDetails: (contactId: string) => Promise<any>
+  convexGetDealDetails: (contactId: string) => Promise<import('./deal-details').DealDetailsResponse | { error: string } | null>
 
   // Script Helper (pre-call briefing pane)
   scriptHelperOpen: (eventId?: string) => Promise<{ success: boolean; error?: string }>
