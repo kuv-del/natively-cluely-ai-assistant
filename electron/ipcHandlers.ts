@@ -2379,6 +2379,23 @@ export function initializeIpcHandlers(appState: AppState): void {
     }
   });
 
+  // ── Convex deal details lookup (Profile tab on DealDetails) ──
+  safeHandle("convex-get-deal-details", async (_, contactId: string) => {
+    if (!contactId) return { error: "contactId is required" };
+    try {
+      const url = `https://opulent-bandicoot-376.convex.site/natively/deal-details?contact_id=${encodeURIComponent(contactId)}`;
+      const resp = await fetch(url);
+      if (!resp.ok) {
+        console.warn(`[IPC] convex-get-deal-details non-200: ${resp.status}`);
+        return { error: `HTTP ${resp.status}` };
+      }
+      return await resp.json();
+    } catch (err) {
+      console.error('[IPC] convex-get-deal-details failed:', err);
+      return { error: String(err) };
+    }
+  });
+
   // ==========================================
   // Script Helper (pre-call briefing pane)
   // ==========================================

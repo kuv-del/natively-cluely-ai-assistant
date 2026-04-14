@@ -238,6 +238,9 @@ interface ElectronAPI {
     deal: { hubspot_deal_id?: string; deal_stage?: string; sdr_owner_name?: string; sdr_email?: string; sdr_slack_id?: string } | null;
   } | null>
 
+  // Convex deal details lookup (DealDetails page)
+  convexGetDealDetails: (contactId: string) => Promise<any>
+
   // Script Helper (pre-call briefing pane)
   scriptHelperOpen: (eventId?: string) => Promise<{ success: boolean; error?: string }>
   scriptHelperClose: () => Promise<{ success: boolean }>
@@ -971,6 +974,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   calendarUpdateEvent: (eventId: string, partial: Record<string, any>) => ipcRenderer.invoke('calendar-update-event', eventId, partial),
   calendarUpdateEventColor: (eventId: string, colorId: string) => ipcRenderer.invoke('calendar-update-event-color', eventId, colorId),
   convexGetMeetingProfile: (calendarEventId: string) => ipcRenderer.invoke('convex-get-meeting-profile', calendarEventId),
+  convexGetDealDetails: (contactId: string) => ipcRenderer.invoke('convex-get-deal-details', contactId),
 
   // Script Helper API
   scriptHelperOpen: (eventId?: string) => ipcRenderer.invoke('script-helper:open', eventId),

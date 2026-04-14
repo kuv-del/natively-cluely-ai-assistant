@@ -275,6 +275,9 @@ export interface ElectronAPI {
     deal: { hubspot_deal_id?: string; deal_stage?: string; sdr_owner_name?: string; sdr_email?: string; sdr_slack_id?: string } | null;
   } | null>
 
+  // Convex deal details lookup (DealDetails page)
+  convexGetDealDetails: (contactId: string) => Promise<any>
+
   // Script Helper (pre-call briefing pane)
   scriptHelperOpen: (eventId?: string) => Promise<{ success: boolean; error?: string }>
   scriptHelperClose: () => Promise<{ success: boolean }>
