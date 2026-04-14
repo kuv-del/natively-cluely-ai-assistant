@@ -2014,7 +2014,34 @@ export function initializeIpcHandlers(appState: AppState): void {
 
   safeHandle("start-meeting", async (event, metadata?: any) => {
     try {
-      await appState.startMeeting(metadata);
+      // backlog 1.10: pre-fetch deal context before opening the overlay so
+      // the in-call chat and coaching suggestions have prospect data from day 1.
+      let enrichedMetadata = metadata ?? {};
+      const contactId: string | undefined =
+        enrichedMetadata?.contact_id ??
+        enrichedMetadata?.meetingProfile?.meeting?.contact_id;
+
+      if (contactId) {
+        try {
+          const url = `https://opulent-bandicoot-376.convex.site/natively/deal-details?contact_id=${encodeURIComponent(contactId)}`;
+          const resp = await fetch(url, { signal: AbortSignal.timeout(8000) });
+          if (resp.ok) {
+            const dealContext = await resp.json();
+            enrichedMetadata = { ...enrichedMetadata, dealContext };
+            console.log(`[IPC] start-meeting: deal context fetched for contact ${contactId}`);
+          } else {
+            console.warn(`[IPC] start-meeting: deal-details returned ${resp.status} — proceeding without context`);
+            enrichedMetadata = { ...enrichedMetadata, dealContext: null };
+          }
+        } catch (fetchErr) {
+          console.warn('[IPC] start-meeting: deal-details fetch failed (non-fatal):', fetchErr);
+          enrichedMetadata = { ...enrichedMetadata, dealContext: null };
+        }
+      } else {
+        enrichedMetadata = { ...enrichedMetadata, dealContext: null };
+      }
+
+      await appState.startMeeting(enrichedMetadata);
       return { success: true };
     } catch (error: any) {
       console.error("Error starting meeting:", error);
@@ -2394,6 +2421,11 @@ export function initializeIpcHandlers(appState: AppState): void {
       console.error('[IPC] convex-get-deal-details failed:', err);
       return { error: String(err) };
     }
+  });
+
+  // backlog 1.10: retrieve deal context stored in SessionTracker for the live call
+  safeHandle("session-get-deal-context", async () => {
+    return appState.getIntelligenceManager().getDealContext();
   });
 
   // ==========================================
