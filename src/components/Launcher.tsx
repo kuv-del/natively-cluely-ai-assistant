@@ -16,6 +16,7 @@ import { useShortcuts } from '../hooks/useShortcuts';
 import { useResolvedTheme } from '../hooks/useResolvedTheme';
 import { isMac } from '../utils/platformUtils';
 import WindowControls from './WindowControls';
+import { hubspotContactUrl } from '../lib/hubspot-mapping';
 
 interface Meeting {
     id: string;
@@ -351,6 +352,8 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
     const [menuEntered, setMenuEntered] = useState(false);
     // Deal pill per-meeting state: 'idle' | 'loading' | 'no_deal'
     const [dealPillState, setDealPillState] = useState<Record<string, 'idle' | 'loading' | 'no_deal'>>({});
+    // HubSpot link icon per-meeting state: 'idle' | 'loading' | 'no_contact'
+    const [linkIconState, setLinkIconState] = useState<Record<string, 'idle' | 'loading' | 'no_contact'>>({});
 
     useEffect(() => {
         setMenuEntered(false);
@@ -959,14 +962,89 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
                                                                     className="group relative flex items-center justify-between px-3 py-2 rounded-lg bg-transparent hover:bg-bg-elevated transition-colors cursor-pointer"
                                                                     onClick={() => handleOpenUpcomingMeeting(ev)}
                                                                 >
-                                                                    <div className="flex items-center gap-2 max-w-[60%]">
+                                                                    <div className="flex items-center gap-2 min-w-0 max-w-[60%]">
                                                                         <Calendar size={12} className="text-emerald-400 shrink-0" />
                                                                         <div className="font-medium text-[14px] text-text-primary truncate">
                                                                             {ev.title}
                                                                         </div>
-                                                                        {ev.link && (
-                                                                            <LinkIcon size={11} className="text-text-tertiary shrink-0" />
-                                                                        )}
+                                                                        {/* Deal pill — click opens DealDetails for this event's contact */}
+                                                                        <button
+                                                                            onClick={async (e) => {
+                                                                                e.stopPropagation();
+                                                                                const mId = `upcoming-${ev.id}`;
+                                                                                const pillState = dealPillState[mId];
+                                                                                if (pillState === 'loading') return;
+                                                                                setDealPillState((prev) => ({ ...prev, [mId]: 'loading' }));
+                                                                                try {
+                                                                                    const profile = await window.electronAPI?.convexGetMeetingProfile?.(ev.id);
+                                                                                    const contactId = profile?.meeting?.contact_id;
+                                                                                    if (contactId) {
+                                                                                        handleOpenDealFromMain(contactId);
+                                                                                        setDealPillState((prev) => ({ ...prev, [mId]: 'idle' }));
+                                                                                    } else {
+                                                                                        setDealPillState((prev) => ({ ...prev, [mId]: 'no_deal' }));
+                                                                                        setTimeout(() => {
+                                                                                            setDealPillState((prev) => ({ ...prev, [mId]: 'idle' }));
+                                                                                        }, 2000);
+                                                                                    }
+                                                                                } catch {
+                                                                                    setDealPillState((prev) => ({ ...prev, [mId]: 'no_deal' }));
+                                                                                    setTimeout(() => {
+                                                                                        setDealPillState((prev) => ({ ...prev, [mId]: 'idle' }));
+                                                                                    }, 2000);
+                                                                                }
+                                                                            }}
+                                                                            className={`shrink-0 px-2 py-0.5 rounded-full text-[10px] font-medium border transition-colors whitespace-nowrap ${
+                                                                                dealPillState[`upcoming-${ev.id}`] === 'no_deal'
+                                                                                    ? 'bg-red-500/10 text-red-400 border-red-500/20'
+                                                                                    : isLight
+                                                                                        ? 'bg-orange-50 text-orange-500 border-orange-300/60 hover:bg-orange-100'
+                                                                                        : 'bg-orange-500/10 text-orange-400 border-orange-500/20 hover:bg-orange-500/20'
+                                                                            }`}
+                                                                        >
+                                                                            {dealPillState[`upcoming-${ev.id}`] === 'loading'
+                                                                                ? '…'
+                                                                                : dealPillState[`upcoming-${ev.id}`] === 'no_deal'
+                                                                                ? 'No deal'
+                                                                                : 'Deal'}
+                                                                        </button>
+                                                                        {/* HubSpot contact link — click opens the HubSpot contact record in browser */}
+                                                                        <button
+                                                                            onClick={async (e) => {
+                                                                                e.stopPropagation();
+                                                                                const key = `upcoming-${ev.id}`;
+                                                                                if (linkIconState[key] === 'loading') return;
+                                                                                setLinkIconState((prev) => ({ ...prev, [key]: 'loading' }));
+                                                                                try {
+                                                                                    const profile = await window.electronAPI?.convexGetMeetingProfile?.(ev.id);
+                                                                                    const hsContactId = profile?.contact?.hubspot_contact_id;
+                                                                                    if (hsContactId) {
+                                                                                        window.electronAPI?.openExternal?.(hubspotContactUrl(hsContactId));
+                                                                                        setLinkIconState((prev) => ({ ...prev, [key]: 'idle' }));
+                                                                                    } else {
+                                                                                        setLinkIconState((prev) => ({ ...prev, [key]: 'no_contact' }));
+                                                                                        setTimeout(() => {
+                                                                                            setLinkIconState((prev) => ({ ...prev, [key]: 'idle' }));
+                                                                                        }, 2000);
+                                                                                    }
+                                                                                } catch {
+                                                                                    setLinkIconState((prev) => ({ ...prev, [key]: 'no_contact' }));
+                                                                                    setTimeout(() => {
+                                                                                        setLinkIconState((prev) => ({ ...prev, [key]: 'idle' }));
+                                                                                    }, 2000);
+                                                                                }
+                                                                            }}
+                                                                            title="Open HubSpot contact"
+                                                                            className={`shrink-0 p-0.5 rounded transition-colors ${
+                                                                                linkIconState[`upcoming-${ev.id}`] === 'no_contact'
+                                                                                    ? 'text-red-400'
+                                                                                    : linkIconState[`upcoming-${ev.id}`] === 'loading'
+                                                                                    ? 'text-text-tertiary animate-pulse'
+                                                                                    : 'text-text-tertiary hover:text-orange-400'
+                                                                            }`}
+                                                                        >
+                                                                            <LinkIcon size={11} />
+                                                                        </button>
                                                                     </div>
                                                                     <div className="flex items-center gap-4">
                                                                         <span className="relative z-10 bg-emerald-500/10 text-emerald-400 text-[9px] px-1.5 py-0.5 rounded-full font-medium tracking-wide">

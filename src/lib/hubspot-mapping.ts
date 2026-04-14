@@ -7,7 +7,8 @@
 
 // Production HubSpot portal id for Kate's account.
 // Used to build app.hubspot.com URLs.
-export const HUBSPOT_PORTAL_ID = "21182745";
+// Confirmed via HubSpot BCC address (24045483@bcc.hubspot.com) which encodes the portal id.
+export const HUBSPOT_PORTAL_ID = "24045483";
 
 // ─── Deal Stages (dealstage) ────────────────────────────────────────────────
 // Internal name → display label
@@ -27,14 +28,19 @@ export function getDealStageLabel(internal: string | undefined | null): string {
     return DEAL_STAGE_MAP[internal] || internal;
 }
 
-/** Build the URL to a HubSpot contact in Kate's portal. */
+/** Build the URL to a HubSpot contact record (object type 0-1). */
 export function hubspotContactUrl(contactId: string): string {
-    return `https://app.hubspot.com/contacts/${HUBSPOT_PORTAL_ID}/contact/${contactId}`;
+    return `https://app.hubspot.com/contacts/${HUBSPOT_PORTAL_ID}/record/0-1/${contactId}`;
 }
 
-/** Build the URL to a HubSpot deal in Kate's portal. */
+/** Build the URL to a HubSpot deal record (object type 0-3). */
 export function hubspotDealUrl(dealId: string): string {
-    return `https://app.hubspot.com/contacts/${HUBSPOT_PORTAL_ID}/deal/${dealId}`;
+    return `https://app.hubspot.com/contacts/${HUBSPOT_PORTAL_ID}/record/0-3/${dealId}`;
+}
+
+/** Build the URL to a HubSpot company record (object type 0-2). */
+export function hubspotCompanyUrl(companyId: string): string {
+    return `https://app.hubspot.com/contacts/${HUBSPOT_PORTAL_ID}/record/0-2/${companyId}`;
 }
 
 // ─── Call Type ──────────────────────────────────────────────────────────────
