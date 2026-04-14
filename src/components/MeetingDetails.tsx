@@ -70,9 +70,10 @@ interface MeetingDetailsProps {
     meeting: Meeting;
     onBack: () => void;
     onOpenSettings: () => void;
+    onOpenDealDetails?: (contactId: string) => void;
 }
 
-const MeetingDetails: React.FC<MeetingDetailsProps> = ({ meeting: initialMeeting }) => {
+const MeetingDetails: React.FC<MeetingDetailsProps> = ({ meeting: initialMeeting, onOpenDealDetails }) => {
     const isLight = useResolvedTheme() === 'light';
     // We need local state for the meeting object to reflect optimistic updates
     const [meeting, setMeeting] = useState<Meeting>(initialMeeting);
@@ -88,7 +89,7 @@ const MeetingDetails: React.FC<MeetingDetailsProps> = ({ meeting: initialMeeting
 
     // Profile data — loaded from Convex via calendar_event_id lookup
     const [profile, setProfile] = useState<{
-        meeting: { id: string; calendar_event_id: string; title: string; meeting_type?: string; start_time: string; end_time?: string; zoom_link?: string; source?: string };
+        meeting: { id: string; calendar_event_id: string; contact_id?: string | null; title: string; meeting_type?: string; start_time: string; end_time?: string; zoom_link?: string; source?: string };
         contact: { first_name?: string; last_name?: string; email?: string; phone?: string; hubspot_contact_id?: string } | null;
         company: { company_name?: string; company_website?: string; company_revenue?: string; employee_count?: string; company_location?: string; industry?: string; hubspot_company_id?: string } | null;
         deal: { hubspot_deal_id?: string; deal_stage?: string; sdr_owner_name?: string; sdr_email?: string; sdr_slack_id?: string } | null;
@@ -322,8 +323,17 @@ ${meeting.detailedSummary.keyPoints?.map(item => `- ${item}`).join('\n') || 'Non
                             />
                         </div>
 
-                        {/* Moved Actions: Follow-up & Share (REMOVED per user request) */}
-                        {/* <div className="flex items-center gap-2 mt-1"> ... </div> */}
+                        {/* View Deal button — only when meeting has a linked contact_id */}
+                        {onOpenDealDetails && profile?.meeting?.contact_id ? (
+                            <div className="flex items-center shrink-0 mt-1">
+                                <button
+                                    onClick={() => onOpenDealDetails(profile!.meeting.contact_id!)}
+                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-medium bg-blue-500/10 text-blue-400 border border-blue-500/30 hover:bg-blue-500/20 transition-colors whitespace-nowrap"
+                                >
+                                    View Deal
+                                </button>
+                            </div>
+                        ) : null}
                     </div>
 
                     {/* Tabs */}

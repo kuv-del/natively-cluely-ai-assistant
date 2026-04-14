@@ -269,7 +269,7 @@ export interface ElectronAPI {
 
   // Convex meeting profile lookup (Profile tab on MeetingDetails)
   convexGetMeetingProfile: (calendarEventId: string) => Promise<{
-    meeting: { id: string; calendar_event_id: string; title: string; meeting_type?: string; start_time: string; end_time?: string; zoom_link?: string; source?: string };
+    meeting: { id: string; calendar_event_id: string; contact_id?: string | null; title: string; meeting_type?: string; start_time: string; end_time?: string; zoom_link?: string; source?: string };
     contact: { first_name?: string; last_name?: string; email?: string; phone?: string; hubspot_contact_id?: string } | null;
     company: { company_name?: string; company_website?: string; company_revenue?: string; employee_count?: string; company_location?: string; industry?: string; hubspot_company_id?: string } | null;
     deal: { hubspot_deal_id?: string; deal_stage?: string; sdr_owner_name?: string; sdr_email?: string; sdr_slack_id?: string } | null;

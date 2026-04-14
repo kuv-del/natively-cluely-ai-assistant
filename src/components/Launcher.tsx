@@ -6,6 +6,7 @@ import mainui from "../UI_comp/mainui.png";
 import calender from "../UI_comp/calender.png";
 import ConnectCalendarButton from './ui/ConnectCalendarButton';
 import MeetingDetails from './MeetingDetails';
+import DealDetails from './DealDetails';
 import TopSearchPill from './TopSearchPill';
 import GlobalChatOverlay from './GlobalChatOverlay';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -100,6 +101,9 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
     const [isCalendarConnected, setIsCalendarConnected] = useState(false);
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [showNotification, setShowNotification] = useState(false);
+
+    // DealDetails navigation state
+    const [selectedDealContactId, setSelectedDealContactId] = useState<string | null>(null);
 
     // Global search state (for AI chat overlay)
     const [isGlobalChatOpen, setIsGlobalChatOpen] = useState(false);
@@ -360,9 +364,9 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
     // Notify parent if we are on the main launcher list view
     useEffect(() => {
         if (onPageChange) {
-            onPageChange(!selectedMeeting && !isGlobalChatOpen);
+            onPageChange(!selectedMeeting && !selectedDealContactId && !isGlobalChatOpen);
         }
-    }, [selectedMeeting, isGlobalChatOpen, onPageChange]);
+    }, [selectedMeeting, selectedDealContactId, isGlobalChatOpen, onPageChange]);
 
     const handleOpenMeeting = async (meeting: Meeting) => {
         setForwardMeeting(null); // Clear forward history on new navigation
@@ -414,6 +418,15 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
     const handleBack = () => {
         setForwardMeeting(selectedMeeting);
         setSelectedMeeting(null);
+    };
+
+    const handleOpenDealDetails = (contactId: string) => {
+        setSelectedDealContactId(contactId);
+        setSelectedMeeting(null);
+    };
+
+    const handleBackFromDeal = () => {
+        setSelectedDealContactId(null);
     };
 
     const handleForward = () => {
@@ -527,7 +540,21 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
                     <div className={`absolute inset-1 border-2 border-dashed rounded-2xl pointer-events-none z-[100] ${isLight ? 'border-black/15' : 'border-white/20'}`} />
                 )}
                 <AnimatePresence mode="wait">
-                    {selectedMeeting ? (
+                    {selectedDealContactId ? (
+                        <motion.div
+                            key="deal-details"
+                            className="flex-1 overflow-hidden"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            transition={{ duration: 0.15 }}
+                        >
+                            <DealDetails
+                                contactId={selectedDealContactId}
+                                onBack={handleBackFromDeal}
+                            />
+                        </motion.div>
+                    ) : selectedMeeting ? (
                         <motion.div
                             key="details"
                             className="flex-1 overflow-hidden"
@@ -540,6 +567,7 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
                                 meeting={selectedMeeting}
                                 onBack={handleBack}
                                 onOpenSettings={onOpenSettings}
+                                onOpenDealDetails={handleOpenDealDetails}
                             />
                         </motion.div>
                     ) : (
