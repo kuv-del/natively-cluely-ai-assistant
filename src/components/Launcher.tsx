@@ -433,6 +433,51 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
         setSelectedMeeting(null);
     };
 
+    // Past Meetings drilldown: called from DealDetails "Open →" pill.
+    // Tries to reconcile a Convex DealDetailsMeetingRef with a local SQLite meeting
+    // by calendar_event_id. Falls back to a synthetic Meeting if not found locally.
+    // TODO: when multi-level nav is added (breadcrumb stack), restore DealDetails
+    // state after Back is hit from MeetingDetails rather than returning to main feed.
+    const handleDrilldownMeetingFromDeal = async (convexMeeting: import('../types/deal-details').DealDetailsMeetingRef) => {
+        // Try to find a matching local recorded meeting by calendarEventId
+        if (convexMeeting.calendar_event_id) {
+            const localMatch = meetings.find((m) => m.calendarEventId === convexMeeting.calendar_event_id);
+            if (localMatch) {
+                // Fetch full local details (transcript, usage, etc.)
+                if (window.electronAPI?.getMeetingDetails) {
+                    try {
+                        const full = await window.electronAPI.getMeetingDetails(localMatch.id);
+                        if (full) {
+                            setSelectedDealContactId(null);
+                            setSelectedMeeting(full);
+                            return;
+                        }
+                    } catch {
+                        // fall through to local match
+                    }
+                }
+                setSelectedDealContactId(null);
+                setSelectedMeeting(localMatch);
+                return;
+            }
+        }
+        // No local row found — synthesize a Meeting from Convex data so MeetingDetails
+        // can still render (Prep tab, etc.) with what we know.
+        const synthetic: Meeting = {
+            id: `convex-${convexMeeting.id}`,
+            title: convexMeeting.title || '(Untitled meeting)',
+            date: convexMeeting.start_time || new Date().toISOString(),
+            duration: '0',
+            summary: '',
+            calendarEventId: convexMeeting.calendar_event_id,
+            isUpcoming: false,
+            transcript: [],
+            usage: [],
+        };
+        setSelectedDealContactId(null);
+        setSelectedMeeting(synthetic);
+    };
+
     const handleBackFromDeal = () => {
         setSelectedDealContactId(null);
     };
@@ -560,6 +605,7 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
                             <DealDetails
                                 contactId={selectedDealContactId}
                                 onBack={handleBackFromDeal}
+                                onOpenMeeting={handleDrilldownMeetingFromDeal}
                             />
                         </motion.div>
                     ) : selectedMeeting ? (
