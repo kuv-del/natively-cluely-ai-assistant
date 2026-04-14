@@ -4,6 +4,7 @@
 
 import { RecapLLM } from './llm';
 import { isVerboseLogging } from './verboseLog';
+import type { DealDetailsResponse } from '../src/types/deal-details';
 
 export interface TranscriptSegment {
     marker?: string;
@@ -50,7 +51,11 @@ export class SessionTracker {
         title?: string;
         calendarEventId?: string;
         source?: 'manual' | 'calendar';
+        dealContext?: DealDetailsResponse | null;
     } | null = null;
+
+    // backlog 1.10: prospect bundle fetched at startMeeting time
+    private currentDealContext: DealDetailsResponse | null = null;
 
     // Full Session Tracking (Persisted)
     private fullTranscript: TranscriptSegment[] = [];
@@ -89,6 +94,17 @@ export class SessionTracker {
 
     public setMeetingMetadata(metadata: any): void {
         this.currentMeetingMetadata = metadata;
+        // backlog 1.10: extract dealContext when present
+        if (metadata && typeof metadata === 'object' && 'dealContext' in metadata) {
+            this.currentDealContext = metadata.dealContext ?? null;
+            if (this.currentDealContext) {
+                const contactName = [
+                    this.currentDealContext.contact?.first_name,
+                    this.currentDealContext.contact?.last_name,
+                ].filter(Boolean).join(' ') || 'unknown';
+                console.log(`[SessionTracker] dealContext loaded for contact: ${contactName}`);
+            }
+        }
     }
 
     public getMeetingMetadata() {
@@ -97,6 +113,15 @@ export class SessionTracker {
 
     public clearMeetingMetadata(): void {
         this.currentMeetingMetadata = null;
+    }
+
+    // backlog 1.10: deal context accessors
+    public getDealContext(): DealDetailsResponse | null {
+        return this.currentDealContext;
+    }
+
+    public clearDealContext(): void {
+        this.currentDealContext = null;
     }
 
     // ============================================
@@ -480,6 +505,8 @@ export class SessionTracker {
         this.codingQuestionSource = null;
         this.codingQuestionSetAt = null;
         this.recentInterviewerBuffer = [];
+        // backlog 1.10: clear deal context on meeting end — fresh fetch each call
+        this.currentDealContext = null;
     }
 
     // ============================================

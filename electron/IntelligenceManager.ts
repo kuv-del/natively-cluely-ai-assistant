@@ -86,6 +86,11 @@ export class IntelligenceManager extends EventEmitter {
         this.session.setMeetingMetadata(metadata);
     }
 
+    // backlog 1.10: expose deal context from session for in-call use
+    getDealContext(): import('../src/types/deal-details').DealDetailsResponse | null {
+        return this.session.getDealContext();
+    }
+
     addTranscript(segment: import('./SessionTracker').TranscriptSegment, skipRefinementCheck: boolean = false): void {
         if (skipRefinementCheck) {
             // Direct add without refinement detection
