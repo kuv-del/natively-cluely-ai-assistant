@@ -165,7 +165,7 @@ Stage 2: DealDetails scaffold + navigation (Natively side)
         ↓
 Stage 3: Wire the tabs one at a time (Profile → Prep → Discovery → Demo → FollowUp)
         ↓
-Stage 4: Cumulative Summary tab (Claude Sonnet via Max, synthesizes per-meeting summaries)
+Stage 4: Cumulative Summary tab (Claude Sonnet via Max, synthesizes per-meeting summaries) [done]
         ↓
 Stage 5: Storage unification (backlog 1.1) — Natively write-through to natively_* tables
         ↓
@@ -253,14 +253,19 @@ Stages 0-4 can all ship without waiting for 1.1. Zoom + Gong transcripts already
 **Effort:** 2.5-3 hours total.
 
 ### Stage 4 — Cumulative Summary tab
+
+> ✅ SHIPPED 2026-04-14 — gobot commits b845aa9, dd31314, cf40716 · natively commit 81988ab
+
 **Build:**
 1. New script `scripts/generate-deal-summary.ts` — takes a `contact_id`, reads all `summary_markdown` rows + `natively_summaries` rows + deal metadata, sends to Claude Sonnet via `claude -p`, writes to a new row in `natively_summaries` with `summary_type="cumulative_deal"`
-2. Triggered by the same `com.go.summary-gen` launchd job — after per-meeting summaries run, regenerate cumulative for any contact whose per-meeting summary list changed
-3. Summary tab on DealDetails queries `natively_summaries` where `summary_type="cumulative_deal"` ordered by `updated_at` desc, displays the latest
+2. Separate launchd job `com.go.deal-summary-gen` (StartInterval: 1800) — runs every 30 min, iterates all eligible contacts
+3. New `convex/nativelySummariesFns.ts` — `insertCumulativeSummary` mutation + `contactsWithSufficientSummaries` query
+4. `convex/dealDetails.ts` extended to return `cumulative_summary` (full doc, most recent by `_creationTime desc`)
+5. Summary tab on DealDetails renders narrative via ReactMarkdown + meta line (generated-at + model)
 
-**Test gate:** Pick a contact with multiple calls. Run the generator manually. Verify the output is coherent. Display in the tab.
+**Test gate:** Ran generator on Michael Koonce (2 calls) — produced 3296-char narrative. `tsc --noEmit` clean, `npm run build` succeeded.
 
-**Effort:** 1.5-2 hours.
+**Effort:** ~2 hours.
 
 ### Stage 5 — Storage unification (backlog 1.1)
 Separate session. When this lands, Natively's local saves write through to the `natively_*` tables. DealDetails automatically shows Natively-recorded calls with richer data.
