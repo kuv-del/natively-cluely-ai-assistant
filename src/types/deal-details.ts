@@ -53,6 +53,15 @@ export interface DealDetailsUpcomingMeeting {
     prep_dossier?: any | null;
 }
 
+export interface DealDetailsCumulativeSummary {
+    _id?: string;
+    _creationTime?: number;
+    summary_markdown: string;
+    generator_model?: string;
+    summary_type?: string;
+    contact_id?: string;
+}
+
 export interface DealDetailsResponse {
     contact: DealDetailsContact | null;
     company: DealDetailsCompany | null;
@@ -73,4 +82,6 @@ export interface DealDetailsResponse {
     prospect_notes?: {
         notes_markdown?: string;
     } | null;
+    /** Stage 4: cumulative deal narrative, most recent row. Null until first generation. */
+    cumulative_summary: DealDetailsCumulativeSummary | null;
 }

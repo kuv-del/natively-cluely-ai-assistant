@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useResolvedTheme } from '../hooks/useResolvedTheme';
 import { ArrowLeft, Link, FileText } from 'lucide-react';
 import { motion } from 'framer-motion';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import {
     getDealStageLabel,
     hubspotContactUrl,
@@ -342,7 +344,34 @@ const DealDetails: React.FC<DealDetailsProps> = ({ contactId, onBack }) => {
                         {/* ── Summary tab ────────────────────────────────────── */}
                         {activeTab === 'summary' && (
                             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                                <EmptyState message="Cumulative summary will generate once call summaries are available (Stage 4)." />
+                                {loading ? (
+                                    <div className="text-text-tertiary text-sm py-8">Loading…</div>
+                                ) : data?.cumulative_summary ? (
+                                    <div className="space-y-3">
+                                        {/* Meta line */}
+                                        <div className="text-[11px] text-text-tertiary">
+                                            Generated{' '}
+                                            {data.cumulative_summary._creationTime
+                                                ? new Date(data.cumulative_summary._creationTime).toLocaleString([], {
+                                                      month: 'short',
+                                                      day: 'numeric',
+                                                      year: 'numeric',
+                                                      hour: 'numeric',
+                                                      minute: '2-digit',
+                                                  })
+                                                : 'recently'}{' '}
+                                            · {data.cumulative_summary.generator_model ?? 'claude-sonnet-max'}
+                                        </div>
+                                        {/* Narrative */}
+                                        <div className="prose prose-sm prose-invert max-w-none text-[13px] leading-relaxed [&_h2]:text-[13px] [&_h2]:font-semibold [&_h2]:mt-4 [&_h2]:mb-1 [&_h3]:text-[13px] [&_h3]:font-semibold [&_h3]:mt-4 [&_h3]:mb-1 [&_p]:my-1 [&_ul]:my-1 [&_li]:my-0.5">
+                                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                                {data.cumulative_summary.summary_markdown}
+                                            </ReactMarkdown>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <EmptyState message="No cumulative summary yet — will auto-generate once at least two per-meeting summaries exist for this prospect (runs every 30 min)." />
+                                )}
                             </motion.div>
                         )}
 
