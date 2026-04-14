@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useResolvedTheme } from '../hooks/useResolvedTheme';
-import { ArrowLeft, Search, Mail, Link, ChevronDown, Play, ArrowUp, Copy, Check, MoreHorizontal, Settings, ArrowRight } from 'lucide-react';
+import { ArrowLeft, Search, Mail, Link, ChevronDown, Play, ArrowUp, Copy, Check, MoreHorizontal, Settings, ArrowRight, FileText } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import MeetingChatOverlay from './MeetingChatOverlay';
 import EditableTextBlock from './EditableTextBlock';
@@ -9,6 +9,16 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import DossierView, { Dossier } from './DossierView';
+import {
+    getDealStageLabel,
+    hubspotContactUrl,
+    hubspotDealUrl,
+    getCallTypeLabel,
+    slackDmUrl,
+    formatPhone,
+    normalizeUrl
+} from '../lib/hubspot-mapping';
 
 const formatTime = (ms: number) => {
     const date = new Date(ms);
@@ -33,6 +43,8 @@ interface Meeting {
     date: string;
     duration: string;
     summary: string;
+    calendarEventId?: string;
+    isUpcoming?: boolean;
     detailedSummary?: {
         overview?: string;
         actionItems: string[];
@@ -64,7 +76,92 @@ const MeetingDetails: React.FC<MeetingDetailsProps> = ({ meeting: initialMeeting
     const isLight = useResolvedTheme() === 'light';
     // We need local state for the meeting object to reflect optimistic updates
     const [meeting, setMeeting] = useState<Meeting>(initialMeeting);
-    const [activeTab, setActiveTab] = useState<'summary' | 'transcript' | 'usage'>('summary');
+    // Default tab: Prep first if this is an upcoming meeting (no recording yet),
+    // otherwise Summary. The dossier-loaded effect below may auto-flip to Prep
+    // if a dossier exists on a recorded meeting.
+    const [activeTab, setActiveTab] = useState<'prep' | 'profile' | 'summary' | 'transcript' | 'usage'>(
+        meeting.isUpcoming ? 'prep' : 'summary'
+    );
+    // Prep dossier — loaded async if this meeting has a calendarEventId
+    const [prepDossier, setPrepDossier] = useState<Dossier | null>(null);
+    const [prepChecked, setPrepChecked] = useState(false);
+
+    // Profile data — loaded from Convex via calendar_event_id lookup
+    const [profile, setProfile] = useState<{
+        meeting: { id: string; calendar_event_id: string; title: string; meeting_type?: string; start_time: string; end_time?: string; zoom_link?: string; source?: string };
+        contact: { first_name?: string; last_name?: string; email?: string; phone?: string; hubspot_contact_id?: string } | null;
+        company: { company_name?: string; company_website?: string; company_revenue?: string; employee_count?: string; company_location?: string; industry?: string; hubspot_company_id?: string } | null;
+        deal: { hubspot_deal_id?: string; deal_stage?: string; sdr_owner_name?: string; sdr_email?: string; sdr_slack_id?: string } | null;
+    } | null>(null);
+    const [profileChecked, setProfileChecked] = useState(false);
+
+    // Fetch Convex profile (contact + company + deal) for this meeting.
+    // Re-fetches on calendar event id change AND on window focus so deal-stage
+    // updates from the HubSpot webhook propagate when Kate switches back.
+    useEffect(() => {
+        let cancelled = false;
+        const eventId = meeting.calendarEventId;
+        if (!eventId) {
+            setProfileChecked(true);
+            return;
+        }
+
+        const load = () => {
+            window.electronAPI?.convexGetMeetingProfile?.(eventId)
+                .then((data) => {
+                    if (!cancelled) {
+                        setProfile(data);
+                        setProfileChecked(true);
+                    }
+                })
+                .catch(() => {
+                    if (!cancelled) setProfileChecked(true);
+                });
+        };
+
+        load();
+        const onFocus = () => load();
+        window.addEventListener('focus', onFocus);
+
+        return () => {
+            cancelled = true;
+            window.removeEventListener('focus', onFocus);
+        };
+    }, [meeting.calendarEventId]);
+
+    // Fetch the dossier (if any) for this meeting's calendar event id.
+    // Default the active tab to 'prep' if a dossier exists.
+    useEffect(() => {
+        let cancelled = false;
+        const eventId = meeting.calendarEventId;
+        if (!eventId) {
+            setPrepChecked(true);
+            return;
+        }
+        window.electronAPI?.scriptHelperReadDossier?.(eventId)
+            .then((d) => {
+                if (cancelled) return;
+                if (d) {
+                    setPrepDossier(d as Dossier);
+                    // Only auto-switch on first load — don't fight a user's later tab clicks
+                    setActiveTab((current) => (current === 'summary' ? 'prep' : current));
+                }
+                setPrepChecked(true);
+            })
+            .catch(() => {
+                if (!cancelled) setPrepChecked(true);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [meeting.calendarEventId]);
+
+    // Tab list — Prep + Profile always available on the meeting detail page.
+    // Profile renders Convex-sourced contact/company/deal data when present,
+    // falls back to an empty state otherwise.
+    const availableTabs: Array<'prep' | 'profile' | 'summary' | 'transcript' | 'usage'> = [
+        'prep', 'profile', 'summary', 'transcript', 'usage'
+    ];
     const [query, setQuery] = useState('');
     const [isCopied, setIsCopied] = useState(false);
     const [isChatOpen, setIsChatOpen] = useState(false);
@@ -193,9 +290,26 @@ ${meeting.detailedSummary.keyPoints?.map(item => `- ${item}`).join('\n') || 'Non
                     {/* Meta Info & Actions Row */}
                     <div className="flex items-start justify-between mb-6">
                         <div className="w-full pr-4">
-                            {/* Date formatting could be improved to use meeting.date if it's an ISO string */}
-                            <div className="text-xs text-text-tertiary font-medium mb-1">
-                                {new Date(meeting.date).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
+                            {/* Date · time range · pretty call type pill */}
+                            <div className="text-xs text-text-tertiary font-medium mb-1 flex items-center gap-2 flex-wrap">
+                                <span>
+                                    {new Date(profile?.meeting?.start_time || meeting.date).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
+                                </span>
+                                {profile?.meeting?.start_time && profile?.meeting?.end_time && (
+                                    <>
+                                        <span className="opacity-40">·</span>
+                                        <span>
+                                            {new Date(profile.meeting.start_time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                                            {' – '}
+                                            {new Date(profile.meeting.end_time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                                        </span>
+                                    </>
+                                )}
+                                {getCallTypeLabel(profile?.meeting?.meeting_type) && (
+                                    <span className="ml-1 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider bg-emerald-500/10 text-emerald-500 border border-emerald-500/30">
+                                        {getCallTypeLabel(profile?.meeting?.meeting_type)}
+                                    </span>
+                                )}
                             </div>
 
                             {/* Editable Title */}
@@ -216,7 +330,7 @@ ${meeting.detailedSummary.keyPoints?.map(item => `- ${item}`).join('\n') || 'Non
                     {/* Designing Tabs to match reference 1:1 (Dark Pill Container) */}
                     <div className="flex items-center justify-between mb-8">
                         <div className={`p-1 rounded-xl inline-flex items-center gap-0.5 ${isLight ? 'bg-[#E5E5EA] border border-black/[0.04]' : 'bg-[#121214] border border-white/[0.08]'}`}>
-                            {['summary', 'transcript', 'usage'].map((tab) => (
+                            {availableTabs.map((tab) => (
                                 <button
                                     key={tab}
                                     onClick={() => setActiveTab(tab as any)}
@@ -250,6 +364,139 @@ ${meeting.detailedSummary.keyPoints?.map(item => `- ${item}`).join('\n') || 'Non
 
                     {/* Tab Content */}
                     <div className="space-y-8">
+                        {activeTab === 'prep' && (
+                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                                {prepDossier ? (
+                                    <DossierView dossier={prepDossier} variant="page" readOnly={!meeting.isUpcoming} />
+                                ) : !prepChecked ? (
+                                    <div className="text-text-tertiary text-sm py-8">Loading prep…</div>
+                                ) : meeting.calendarEventId ? (
+                                    <div className="flex flex-col items-center justify-center text-center py-16 space-y-3">
+                                        <FileText className="w-8 h-8 text-text-tertiary opacity-60" />
+                                        <div className="text-[13px] font-medium text-text-primary">No prep dossier for this meeting</div>
+                                        <div className="text-[11px] text-text-tertiary leading-relaxed max-w-[360px]">
+                                            Drop a dossier JSON at <code className="text-[10px] text-text-secondary">~/Library/Application Support/natively/prep/{meeting.calendarEventId}.json</code> and reopen this page.
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="flex flex-col items-center justify-center text-center py-16 space-y-3">
+                                        <FileText className="w-8 h-8 text-text-tertiary opacity-60" />
+                                        <div className="text-[13px] font-medium text-text-primary">No prep available</div>
+                                        <div className="text-[11px] text-text-tertiary leading-relaxed max-w-[360px]">
+                                            This meeting wasn't started from a calendar event, so there's no event ID to look up a prep dossier. Future meetings started from your calendar will have prep notes here.
+                                        </div>
+                                    </div>
+                                )}
+                            </motion.div>
+                        )}
+
+                        {activeTab === 'profile' && (
+                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                                {!profileChecked ? (
+                                    <div className="text-text-tertiary text-sm py-8">Loading profile…</div>
+                                ) : profile ? (
+                                    <div className="space-y-6 max-w-2xl">
+                                        {/* Contact identity */}
+                                        <div>
+                                            <h3 className="text-[11px] uppercase tracking-wider text-text-tertiary font-bold mb-3">Contact</h3>
+                                            <div className="space-y-2">
+                                                <ProfileRow
+                                                    label="Name"
+                                                    value={[profile.contact?.first_name, profile.contact?.last_name].filter(Boolean).join(' ') || undefined}
+                                                />
+                                                <ProfileRow
+                                                    label="Email"
+                                                    value={profile.contact?.email}
+                                                    href={profile.contact?.email ? `mailto:${profile.contact.email}` : undefined}
+                                                />
+                                                {(() => {
+                                                    const phone = formatPhone(profile.contact?.phone);
+                                                    return (
+                                                        <ProfileRow
+                                                            label="Phone"
+                                                            value={phone?.display}
+                                                            href={phone?.href}
+                                                        />
+                                                    );
+                                                })()}
+                                            </div>
+                                        </div>
+                                        {/* Company */}
+                                        <div>
+                                            <h3 className="text-[11px] uppercase tracking-wider text-text-tertiary font-bold mb-3">Company</h3>
+                                            <div className="space-y-2">
+                                                <ProfileRow
+                                                    label="Company"
+                                                    value={profile.company?.company_name}
+                                                    href={normalizeUrl(profile.company?.company_website) || undefined}
+                                                />
+                                                <ProfileRow label="Location" value={profile.company?.company_location} />
+                                                <ProfileRow label="Revenue" value={profile.company?.company_revenue} />
+                                                <ProfileRow label="Team Size" value={profile.company?.employee_count} />
+                                            </div>
+                                        </div>
+                                        {/* Deal & SDR */}
+                                        <div>
+                                            <h3 className="text-[11px] uppercase tracking-wider text-text-tertiary font-bold mb-3">Deal</h3>
+                                            <div className="space-y-2">
+                                                <ProfileRow
+                                                    label="SDR Owner"
+                                                    value={profile.deal?.sdr_owner_name}
+                                                    href={profile.deal?.sdr_slack_id ? slackDmUrl(profile.deal.sdr_slack_id) : undefined}
+                                                />
+                                                <ProfileRow label="Deal Stage" value={getDealStageLabel(profile.deal?.deal_stage)} />
+                                            </div>
+                                        </div>
+                                        {/* HubSpot links */}
+                                        {(profile.contact?.hubspot_contact_id || profile.deal?.hubspot_deal_id) && (
+                                            <div>
+                                                <h3 className="text-[11px] uppercase tracking-wider text-text-tertiary font-bold mb-3">HubSpot</h3>
+                                                <div className="flex flex-wrap gap-2">
+                                                    {profile.contact?.hubspot_contact_id && (
+                                                        <a
+                                                            href={hubspotContactUrl(profile.contact.hubspot_contact_id)}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            onClick={(e) => {
+                                                                e.preventDefault();
+                                                                window.electronAPI?.openExternal?.(hubspotContactUrl(profile.contact!.hubspot_contact_id!));
+                                                            }}
+                                                            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-[12px] font-medium bg-orange-500/10 text-orange-500 border border-orange-500/30 hover:bg-orange-500/20 transition-colors"
+                                                        >
+                                                            <Link size={12} />
+                                                            HubSpot Contact
+                                                        </a>
+                                                    )}
+                                                    {profile.deal?.hubspot_deal_id && (
+                                                        <a
+                                                            href={hubspotDealUrl(profile.deal.hubspot_deal_id)}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            onClick={(e) => {
+                                                                e.preventDefault();
+                                                                window.electronAPI?.openExternal?.(hubspotDealUrl(profile.deal!.hubspot_deal_id!));
+                                                            }}
+                                                            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-[12px] font-medium bg-orange-500/10 text-orange-500 border border-orange-500/30 hover:bg-orange-500/20 transition-colors"
+                                                        >
+                                                            <Link size={12} />
+                                                            HubSpot Deal
+                                                        </a>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <div className="flex flex-col items-center justify-center text-center py-16 space-y-3">
+                                        <FileText className="w-8 h-8 text-text-tertiary opacity-60" />
+                                        <div className="text-[13px] font-medium text-text-primary">No profile available</div>
+                                        <div className="text-[11px] text-text-tertiary leading-relaxed max-w-[360px]">
+                                            This meeting isn't linked to a HubSpot deal in Convex, so we don't have prospect details to show. Sales meetings booked through your HubSpot workflow will have profile data here automatically.
+                                        </div>
+                                    </div>
+                                )}
+                            </motion.div>
+                        )}
                         {/* Using standard divs for content, framer motion for layout */}
                         {activeTab === 'summary' && (
                             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
@@ -533,6 +780,36 @@ ${meeting.detailedSummary.keyPoints?.map(item => `- ${item}`).join('\n') || 'Non
                     setSubmittedQuery(newQuery);
                 }}
             />
+        </div>
+    );
+};
+
+// Two-column row used by the Profile tab. When `href` is provided, the value
+// becomes a click-through link routed via Electron's openExternal so OS protocol
+// schemes (mailto:, tel:, slack:, https:) open in the right handler.
+const ProfileRow: React.FC<{ label: string; value?: string | null; href?: string }> = ({ label, value, href }) => {
+    const handleClick = (e: React.MouseEvent) => {
+        if (!href) return;
+        e.preventDefault();
+        window.electronAPI?.openExternal?.(href);
+    };
+
+    return (
+        <div className="flex items-baseline gap-4 text-[13px]">
+            <div className="text-text-tertiary w-28 shrink-0">{label}</div>
+            {value && href ? (
+                <a
+                    href={href}
+                    onClick={handleClick}
+                    className="text-emerald-500 hover:text-emerald-400 hover:underline transition-colors cursor-pointer"
+                >
+                    {value}
+                </a>
+            ) : (
+                <div className={value ? 'text-text-primary' : 'text-text-tertiary italic'}>
+                    {value || '—'}
+                </div>
+            )}
         </div>
     );
 };

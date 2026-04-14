@@ -22,6 +22,8 @@ interface Meeting {
     date: string;
     duration: string;
     summary: string;
+    calendarEventId?: string;
+    isUpcoming?: boolean;        // true when this is a synthetic Meeting from an unpicked calendar event
     detailedSummary?: {
         actionItems: string[];
         keyPoints: string[];
@@ -51,22 +53,33 @@ interface LauncherProps {
     ollamaPullMessage?: string;
 }
 
-// Helper to format date groups
+// Returns the next business day after the given date (skips Sat/Sun).
+const nextBusinessDay = (from: Date): Date => {
+    const d = new Date(from);
+    d.setDate(d.getDate() + 1);
+    while (d.getDay() === 0 || d.getDay() === 6) {
+        d.setDate(d.getDate() + 1);
+    }
+    return d;
+};
+
+// Helper to format date groups — Today / Tomorrow (= next business day) / Past
 const getGroupLabel = (dateStr: string) => {
     if (dateStr === "Today") return "Today"; // Backward compatibility
 
     const date = new Date(dateStr);
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
+    const tomorrow = nextBusinessDay(today);
+    const tomorrowStart = new Date(tomorrow.getFullYear(), tomorrow.getMonth(), tomorrow.getDate());
 
     const checkDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
 
     if (checkDate.getTime() === today.getTime()) return "Today";
-    if (checkDate.getTime() === yesterday.getTime()) return "Yesterday";
+    if (checkDate.getTime() === tomorrowStart.getTime()) return "Tomorrow";
 
-    return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    // Everything else (yesterday and older recorded meetings) → Past
+    return "Past";
 };
 
 // Helper to format time (e.g. 3:14pm)
@@ -226,6 +239,13 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
     const handlePrepare = (event: any) => {
         setPreparedEvent(event);
         setIsPrepared(true);
+        // Open the Script Helper floating window and load any dossier file
+        // that matches this calendar event id (best effort — silent if missing).
+        try {
+            window.electronAPI?.scriptHelperOpen?.(event?.id);
+        } catch (err) {
+            console.error('[Launcher] scriptHelperOpen failed:', err);
+        }
     };
 
     const handleStartPreparedMeeting = async () => {
@@ -258,24 +278,67 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
         analytics.trackModeSelected(newState ? 'launcher' : 'undetectable'); // If visible (detectable), mode is normal/launcher. If not detectable, mode is undetectable.
     };
 
-    // Group meetings
-    const groupedMeetings = meetings.reduce((acc, meeting) => {
-        const label = getGroupLabel(meeting.date);
-        if (!acc[label]) acc[label] = [];
-        acc[label].push(meeting);
-        return acc;
-    }, {} as Record<string, Meeting[]>);
+    // ─── Unified meeting feed ─────────────────────────────────────────────
+    // - Today section combines upcoming calendar events (start time > now) AND
+    //   today's recorded meetings, sorted chronologically. De-duplicated by
+    //   calendarEventId so a recorded meeting hides its source calendar event.
+    // - Past day sections (Yesterday, etc) only show recorded meetings — calendar
+    //   events from past days are excluded since they represent "what was scheduled"
+    //   rather than "what actually happened".
+    type FeedItem =
+        | { kind: 'recorded'; meeting: Meeting; sortMs: number }
+        | { kind: 'upcoming'; event: any; sortMs: number };
 
-    // Group order (Today, Yesterday, then others sorted new to old is implicit via API return order ideally, 
-    // but JS object key order isn't guaranteed. We can use a Map or just known keys.)
-    // Simple sort for keys:
-    const sortedGroups = Object.keys(groupedMeetings).sort((a, b) => {
+    const recordedEventIds = new Set(
+        meetings.map((m: any) => m.calendarEventId).filter(Boolean)
+    );
+
+    // Build the Today and Tomorrow groups (Tomorrow = next business day)
+    const nowMs = Date.now();
+    const todayRecorded: FeedItem[] = meetings
+        .filter((m) => getGroupLabel(m.date) === 'Today')
+        .map((m) => ({ kind: 'recorded' as const, meeting: m, sortMs: new Date(m.date).getTime() }));
+    const todayUpcoming: FeedItem[] = upcomingEvents
+        .filter((e) => {
+            const startMs = new Date(e.startTime).getTime();
+            return (
+                startMs > nowMs &&
+                getGroupLabel(e.startTime) === 'Today' &&
+                !recordedEventIds.has(e.id)
+            );
+        })
+        .map((e) => ({ kind: 'upcoming' as const, event: e, sortMs: new Date(e.startTime).getTime() }));
+    const todayItems = [...todayRecorded, ...todayUpcoming].sort((a, b) => a.sortMs - b.sortMs);
+
+    const tomorrowUpcoming: FeedItem[] = upcomingEvents
+        .filter((e) => {
+            const startMs = new Date(e.startTime).getTime();
+            return (
+                startMs > nowMs &&
+                getGroupLabel(e.startTime) === 'Tomorrow' &&
+                !recordedEventIds.has(e.id)
+            );
+        })
+        .map((e) => ({ kind: 'upcoming' as const, event: e, sortMs: new Date(e.startTime).getTime() }));
+    const tomorrowItems = tomorrowUpcoming.sort((a, b) => a.sortMs - b.sortMs);
+
+    // Past group: ALL recorded meetings that aren't Today (yesterday + older lumped)
+    const pastItems: FeedItem[] = meetings
+        .filter((m) => getGroupLabel(m.date) === 'Past')
+        .map((m) => ({ kind: 'recorded' as const, meeting: m, sortMs: new Date(m.date).getTime() }))
+        .sort((a, b) => b.sortMs - a.sortMs); // newest first
+
+    const groupedFeed: Record<string, FeedItem[]> = {};
+    if (todayItems.length > 0) groupedFeed['Today'] = todayItems;
+    if (tomorrowItems.length > 0) groupedFeed['Tomorrow'] = tomorrowItems;
+    if (pastItems.length > 0) groupedFeed['Past'] = pastItems;
+
+    const sortedGroups = Object.keys(groupedFeed).sort((a, b) => {
         if (a === 'Today') return -1;
         if (b === 'Today') return 1;
-        if (a === 'Yesterday') return -1;
-        if (b === 'Yesterday') return 1;
-        // Approximation for others: parse date
-        return new Date(b).getTime() - new Date(a).getTime();
+        if (a === 'Tomorrow') return -1;
+        if (b === 'Tomorrow') return 1;
+        return 0; // Past last
     });
 
 
@@ -326,6 +389,26 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
         }
         // Fallback to list-view data if fetch fails
         setSelectedMeeting(meeting);
+    };
+
+    // Open an UPCOMING calendar event as if it were a meeting record. We synthesize
+    // a Meeting object that carries the calendarEventId so the MeetingDetails Prep
+    // tab can look up the dossier file. Summary / Transcript / Usage tabs will show
+    // empty states until the meeting is actually recorded.
+    const handleOpenUpcomingMeeting = (event: any) => {
+        const synthetic: Meeting = {
+            id: `upcoming-${event.id}`,
+            title: event.title || '(Untitled meeting)',
+            date: event.startTime,
+            duration: '0',
+            summary: '',
+            calendarEventId: event.id,
+            isUpcoming: true,
+            transcript: [],
+            usage: [],
+        };
+        setForwardMeeting(null);
+        setSelectedMeeting(synthetic);
     };
 
     const handleBack = () => {
@@ -647,7 +730,7 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3 h-[198px]">
                                         {/* PREPARED STATE CARD */}
                                         {isPrepared && preparedEvent ? (
-                                            <div className={`md:col-span-3 relative group rounded-xl overflow-hidden border border-emerald-500/30 ${isLight ? 'bg-bg-elevated' : 'bg-bg-secondary'} flex flex-col items-center justify-center p-6 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-emerald-900/40 ${isLight ? 'via-bg-elevated to-bg-elevated' : 'via-bg-secondary to-bg-secondary'}`}>
+                                            <div className={`md:col-span-2 relative group rounded-xl overflow-hidden border border-emerald-500/30 ${isLight ? 'bg-bg-elevated' : 'bg-bg-secondary'} flex flex-col items-center justify-center p-6 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-emerald-900/40 ${isLight ? 'via-bg-elevated to-bg-elevated' : 'via-bg-secondary to-bg-secondary'}`}>
 
                                                 <div className="absolute top-4 right-4 text-emerald-400">
                                                     <Zap size={16} className="text-yellow-400" />
@@ -785,7 +868,37 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
                                             <section key={label}>
                                                 <h3 className="text-[13px] font-medium text-text-secondary mb-3 pl-1">{label}</h3>
                                                 <div className="space-y-1">
-                                                    {groupedMeetings[label].map((m) => (
+                                                    {groupedFeed[label].map((item) => {
+                                                        if (item.kind === 'upcoming') {
+                                                            const ev = item.event;
+                                                            return (
+                                                                <motion.div
+                                                                    key={`upcoming-${ev.id}`}
+                                                                    className="group relative flex items-center justify-between px-3 py-2 rounded-lg bg-transparent hover:bg-bg-elevated transition-colors cursor-pointer"
+                                                                    onClick={() => handleOpenUpcomingMeeting(ev)}
+                                                                >
+                                                                    <div className="flex items-center gap-2 max-w-[60%]">
+                                                                        <Calendar size={12} className="text-emerald-400 shrink-0" />
+                                                                        <div className="font-medium text-[14px] text-text-primary truncate">
+                                                                            {ev.title}
+                                                                        </div>
+                                                                        {ev.link && (
+                                                                            <LinkIcon size={11} className="text-text-tertiary shrink-0" />
+                                                                        )}
+                                                                    </div>
+                                                                    <div className="flex items-center gap-4">
+                                                                        <span className="relative z-10 bg-emerald-500/10 text-emerald-400 text-[9px] px-1.5 py-0.5 rounded-full font-medium tracking-wide">
+                                                                            UPCOMING
+                                                                        </span>
+                                                                        <span className="text-[13px] text-text-secondary font-medium min-w-[60px] text-right">
+                                                                            {new Date(ev.startTime).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }).toLowerCase()}
+                                                                        </span>
+                                                                    </div>
+                                                                </motion.div>
+                                                            );
+                                                        }
+                                                        const m = item.meeting;
+                                                        return (
                                                         <motion.div
                                                             key={m.id}
                                                             layoutId={`meeting-${m.id}`}
@@ -893,12 +1006,13 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
                                                                 )}
                                                             </AnimatePresence>
                                                         </motion.div>
-                                                    ))}
+                                                    );
+                                                    })}
                                                 </div>
                                             </section>
                                         ))}
 
-                                        {meetings.length === 0 && (
+                                        {sortedGroups.length === 0 && (
                                             <div className="p-4 text-text-tertiary text-sm">No recent meetings.</div>
                                         )}
 

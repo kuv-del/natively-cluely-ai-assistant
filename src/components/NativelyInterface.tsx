@@ -26,8 +26,24 @@ import {
     Code,
     Copy,
     Check,
-    PointerOff
+    PointerOff,
+    ListChecks
 } from 'lucide-react';
+
+// Preset prompt fired by the "Next Steps" button — end-of-call recommendations.
+// See premium/electron/knowledge/NextStepsRecommender.md for full context.
+const NEXT_STEPS_PROMPT = `We're wrapping up this call. Based on the full transcript, dossier, and any pain points or buying signals you noticed, give me your recommended next steps.
+
+Format your reply as:
+
+"Here's what I'd recommend:"
+
+1. **Call summary** — 3–5 bullets on what the prospect said (challenges, goals, buying signals, objections).
+2. **HubSpot updates** — recommended call outcome, whether an offer was made (yes/no + what), recommended deal stage, and expected close date.
+3. **Follow-up email** — short draft I can send, referencing what they actually said on the call.
+4. **Next meeting** — if we discussed a specific date/time, propose it; otherwise suggest a reasonable window.
+
+I'll review and approve each piece before anything actually fires. Don't execute anything yet — just recommend.`;
 import { motion, AnimatePresence } from 'framer-motion';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneLight, vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
@@ -1307,14 +1323,18 @@ Provide only the answer, nothing else.`;
         }
     };
 
-    const handleManualSubmit = async () => {
-        if (!inputValue.trim() && attachedContext.length === 0) return;
+    const handleManualSubmit = async (presetText?: string) => {
+        const usingPreset = typeof presetText === 'string' && presetText.length > 0;
+        const rawText = usingPreset ? presetText! : inputValue;
+        if (!rawText.trim() && attachedContext.length === 0) return;
 
-        const userText = inputValue;
+        const userText = rawText;
         const currentAttachments = attachedContext;
 
-        // Clear inputs immediately
-        setInputValue('');
+        // Clear the visible input only if the submission came from the input box
+        if (!usingPreset) {
+            setInputValue('');
+        }
         setAttachedContext([]);
 
         setMessages(prev => [...prev, {
@@ -2331,8 +2351,26 @@ Provide only the answer, nothing else.`;
 
                                     </div>
 
+                                    {/* Next Steps — preset wrap-up prompt (end-of-call recommendations) */}
                                     <button
-                                        onClick={handleManualSubmit}
+                                        onClick={() => handleManualSubmit(NEXT_STEPS_PROMPT)}
+                                        disabled={isProcessing}
+                                        title="Ask for end-of-call recommendations (summary, HubSpot updates, follow-up, next meeting)"
+                                        className={`
+                                            h-7 px-2.5 rounded-full flex items-center justify-center gap-1
+                                            text-xs font-medium
+                                            interaction-base interaction-press
+                                            overlay-icon-surface overlay-icon-surface-hover overlay-text-interactive
+                                            ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''}
+                                        `}
+                                        style={appearance.iconStyle}
+                                    >
+                                        <ListChecks className="w-3.5 h-3.5" />
+                                        <span>Next Steps</span>
+                                    </button>
+
+                                    <button
+                                        onClick={() => handleManualSubmit()}
                                         disabled={!inputValue.trim()}
                                     className={`
                                     w-7 h-7 rounded-full flex items-center justify-center

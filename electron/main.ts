@@ -150,6 +150,7 @@ import { WindowHelper } from "./WindowHelper"
 import { SettingsWindowHelper } from "./SettingsWindowHelper"
 import { ModelSelectorWindowHelper } from "./ModelSelectorWindowHelper"
 import { CropperWindowHelper } from "./CropperWindowHelper"
+import { ScriptHelperWindowHelper } from "./ScriptHelperWindowHelper"
 import { ScreenshotHelper } from "./ScreenshotHelper"
 import { KeybindManager } from "./services/KeybindManager"
 import { ProcessingHelper } from "./ProcessingHelper"
@@ -213,6 +214,7 @@ export class AppState {
   public settingsWindowHelper: SettingsWindowHelper
   public modelSelectorWindowHelper: ModelSelectorWindowHelper
   public cropperWindowHelper: CropperWindowHelper
+  public scriptHelperWindowHelper: ScriptHelperWindowHelper
   private screenshotHelper: ScreenshotHelper
   public processingHelper: ProcessingHelper
 
@@ -279,6 +281,7 @@ export class AppState {
     this.settingsWindowHelper = new SettingsWindowHelper()
     this.modelSelectorWindowHelper = new ModelSelectorWindowHelper()
     this.cropperWindowHelper = new CropperWindowHelper()
+    this.scriptHelperWindowHelper = new ScriptHelperWindowHelper()
 
     // 3. Initialize other helpers
     this.screenshotHelper = new ScreenshotHelper(this.view)
@@ -288,6 +291,7 @@ export class AppState {
     this.settingsWindowHelper.setContentProtection(this.isUndetectable);
     this.modelSelectorWindowHelper.setContentProtection(this.isUndetectable);
     this.cropperWindowHelper.setContentProtection(this.isUndetectable);
+    this.scriptHelperWindowHelper.setContentProtection(this.isUndetectable);
 
     if (process.platform === 'win32' || process.platform === 'darwin') {
       this.cropperWindowHelper.preload();
@@ -415,6 +419,7 @@ export class AppState {
     // Inject WindowHelper into other helpers
     this.settingsWindowHelper.setWindowHelper(this.windowHelper);
     this.modelSelectorWindowHelper.setWindowHelper(this.windowHelper);
+    this.scriptHelperWindowHelper.setWindowHelper(this.windowHelper);
 
 
 

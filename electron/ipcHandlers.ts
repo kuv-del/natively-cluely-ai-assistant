@@ -2351,6 +2351,80 @@ export function initializeIpcHandlers(appState: AppState): void {
     return { success: true };
   });
 
+  // ── 2-way calendar write ops ──
+  safeHandle("calendar-update-event", async (_, eventId: string, partial: any) => {
+    const { CalendarManager } = require('./services/CalendarManager');
+    return CalendarManager.getInstance().updateEvent(eventId, partial);
+  });
+
+  safeHandle("calendar-update-event-color", async (_, eventId: string, colorId: string) => {
+    const { CalendarManager } = require('./services/CalendarManager');
+    return CalendarManager.getInstance().updateEventColor(eventId, colorId);
+  });
+
+  // ── Convex meeting profile lookup (Profile tab on MeetingDetails) ──
+  safeHandle("convex-get-meeting-profile", async (_, calendarEventId: string) => {
+    if (!calendarEventId) return null;
+    try {
+      const url = `https://opulent-bandicoot-376.convex.site/natively/meeting-profile?calendar_event_id=${encodeURIComponent(calendarEventId)}`;
+      const resp = await fetch(url);
+      if (!resp.ok) {
+        console.warn(`[IPC] convex-get-meeting-profile non-200: ${resp.status}`);
+        return null;
+      }
+      return await resp.json();
+    } catch (err) {
+      console.error('[IPC] convex-get-meeting-profile failed:', err);
+      return null;
+    }
+  });
+
+  // ==========================================
+  // Script Helper (pre-call briefing pane)
+  // ==========================================
+
+  safeHandle("script-helper:open", async (_, eventId?: string) => {
+    try {
+      const helper = appState.scriptHelperWindowHelper;
+      // Load dossier first if an event id was supplied — sets currentDossier
+      // BEFORE the window opens so the renderer fetches it on mount.
+      if (eventId) {
+        helper.loadDossierForEvent(eventId);
+      }
+      helper.openWindow();
+      return { success: true };
+    } catch (err: any) {
+      console.error('[IPC] script-helper:open failed:', err);
+      return { success: false, error: err?.message || 'Unknown error' };
+    }
+  });
+
+  safeHandle("script-helper:close", async () => {
+    appState.scriptHelperWindowHelper.closeWindow();
+    return { success: true };
+  });
+
+  safeHandle("script-helper:get-dossier", async () => {
+    return appState.scriptHelperWindowHelper.getDossier();
+  });
+
+  safeHandle("script-helper:load-dossier", async (_, eventId: string) => {
+    const dossier = appState.scriptHelperWindowHelper.loadDossierForEvent(eventId);
+    return { success: !!dossier, dossier };
+  });
+
+  safeHandle("script-helper:paste-dossier", async (_, jsonText: string) => {
+    return appState.scriptHelperWindowHelper.pasteDossier(jsonText);
+  });
+
+  safeHandle("script-helper:is-visible", async () => {
+    return { visible: appState.scriptHelperWindowHelper.isVisible() };
+  });
+
+  safeHandle("script-helper:read-dossier-by-event-id", async (_, eventId: string) => {
+    return appState.scriptHelperWindowHelper.readDossierForEvent(eventId);
+  });
+
   // ==========================================
   // Follow-up Email Handlers
   // ==========================================

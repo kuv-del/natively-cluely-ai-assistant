@@ -38,15 +38,25 @@ const App: React.FC = () => {
   const isOverlayWindow = new URLSearchParams(window.location.search).get('window') === 'overlay';
   const isModelSelectorWindow = new URLSearchParams(window.location.search).get('window') === 'model-selector';
   const isCropperWindow = new URLSearchParams(window.location.search).get('window') === 'cropper';
+  const isScriptHelperWindow = new URLSearchParams(window.location.search).get('window') === 'script-helper';
 
   // Default to launcher if not specified (dev mode safety)
-  const isDefault = !isSettingsWindow && !isOverlayWindow && !isModelSelectorWindow && !isCropperWindow;
+  const isDefault = !isSettingsWindow && !isOverlayWindow && !isModelSelectorWindow && !isCropperWindow && !isScriptHelperWindow;
 
   if (isCropperWindow) {
     const Cropper = React.lazy(() => import('./components/Cropper'));
     return (
       <React.Suspense fallback={<div className="w-screen h-screen bg-transparent" />}>
         <Cropper />
+      </React.Suspense>
+    );
+  }
+
+  if (isScriptHelperWindow) {
+    const ScriptHelperApp = React.lazy(() => import('./_pages/ScriptHelper/ScriptHelperApp'));
+    return (
+      <React.Suspense fallback={<div className="w-screen h-screen bg-transparent" />}>
+        <ScriptHelperApp />
       </React.Suspense>
     );
   }

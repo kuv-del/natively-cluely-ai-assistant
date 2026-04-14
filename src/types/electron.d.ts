@@ -250,8 +250,40 @@ export interface ElectronAPI {
   calendarConnect: () => Promise<{ success: boolean; error?: string }>
   calendarDisconnect: () => Promise<{ success: boolean; error?: string }>
   getCalendarStatus: () => Promise<{ connected: boolean; email?: string }>
-  getUpcomingEvents: () => Promise<Array<{ id: string; title: string; startTime: string; endTime: string; link?: string; source: 'google' }>>
+  getUpcomingEvents: () => Promise<Array<{
+    id: string;
+    title: string;
+    description: string | null;
+    startTime: string;
+    endTime: string;
+    link?: string;
+    location: string | null;
+    attendees: Array<{ email: string; name: string | null; responseStatus: 'accepted' | 'declined' | 'tentative' | 'needsAction' }>;
+    colorId: string | null;
+    colorHex: string | null;
+    source: 'google';
+  }>>
   calendarRefresh: () => Promise<{ success: boolean; error?: string }>
+  calendarUpdateEvent: (eventId: string, partial: Record<string, any>) => Promise<{ success: boolean; error?: string }>
+  calendarUpdateEventColor: (eventId: string, colorId: string) => Promise<{ success: boolean; error?: string }>
+
+  // Convex meeting profile lookup (Profile tab on MeetingDetails)
+  convexGetMeetingProfile: (calendarEventId: string) => Promise<{
+    meeting: { id: string; calendar_event_id: string; title: string; meeting_type?: string; start_time: string; end_time?: string; zoom_link?: string; source?: string };
+    contact: { first_name?: string; last_name?: string; email?: string; phone?: string; hubspot_contact_id?: string } | null;
+    company: { company_name?: string; company_website?: string; company_revenue?: string; employee_count?: string; company_location?: string; industry?: string; hubspot_company_id?: string } | null;
+    deal: { hubspot_deal_id?: string; deal_stage?: string; sdr_owner_name?: string; sdr_email?: string; sdr_slack_id?: string } | null;
+  } | null>
+
+  // Script Helper (pre-call briefing pane)
+  scriptHelperOpen: (eventId?: string) => Promise<{ success: boolean; error?: string }>
+  scriptHelperClose: () => Promise<{ success: boolean }>
+  scriptHelperGetDossier: () => Promise<any | null>
+  scriptHelperLoadDossier: (eventId: string) => Promise<{ success: boolean; dossier: any | null }>
+  scriptHelperPasteDossier: (jsonText: string) => Promise<{ success: boolean; error?: string }>
+  scriptHelperIsVisible: () => Promise<{ visible: boolean }>
+  scriptHelperReadDossier: (eventId: string) => Promise<any | null>
+  onScriptHelperDossierLoaded: (callback: (dossier: any | null) => void) => () => void
 
   // Auto-Update
   onUpdateAvailable: (callback: (info: any) => void) => () => void
