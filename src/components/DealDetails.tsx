@@ -12,15 +12,15 @@ import {
     formatPhone,
     normalizeUrl,
 } from '../lib/hubspot-mapping';
-import type { DealDetailsResponse } from '../types/deal-details';
+import type { DealDetailsResponse, DealDetailsMeetingRef, DealDetailsMeetingGroup } from '../types/deal-details';
 import DealPrepTab from './deal-tabs/DealPrepTab';
-import DealCallTypeTab from './deal-tabs/DealCallTypeTab';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 interface DealDetailsProps {
     contactId: string;
     onBack: () => void;
+    onOpenMeeting?: (meeting: DealDetailsMeetingRef) => void;
 }
 
 // ─── ProfileRow (mirrors MeetingDetails — DRY refactor is a later concern) ───
@@ -54,19 +54,62 @@ const ProfileRow: React.FC<{ label: string; value?: string | null; href?: string
 
 // ─── Tab definitions ──────────────────────────────────────────────────────────
 
-type TabKey = 'discovery' | 'demo' | 'followup' | 'summary' | 'prep' | 'profile' | 'grade';
+type TabKey = 'summary' | 'profile' | 'grade' | 'past_meetings' | 'prep';
 
 const TAB_LABELS: Record<TabKey, string> = {
+    summary: 'Summary',
+    profile: 'Profile',
+    grade: 'Grade',
+    past_meetings: 'Past Meetings',
+    prep: 'Prep',
+};
+
+const AVAILABLE_TABS: TabKey[] = ['summary', 'profile', 'grade', 'past_meetings', 'prep'];
+
+// ─── Meeting type pretty labels ───────────────────────────────────────────────
+
+const MEETING_TYPE_PRETTY: Record<string, string> = {
     discovery: 'Discovery Call',
     demo: 'Demo Call',
     followup: 'Follow Up',
-    summary: 'Summary',
-    prep: 'Prep',
-    profile: 'Profile',
-    grade: 'Grade',
+    sdr_triage: 'SDR Triage Call',
+    game_planning: 'Game Planning',
 };
 
-const AVAILABLE_TABS: TabKey[] = ['discovery', 'demo', 'followup', 'summary', 'prep', 'profile', 'grade'];
+function getMeetingTypeLabel(type: string | undefined | null): string {
+    if (!type) return 'Meeting';
+    return MEETING_TYPE_PRETTY[type] || type;
+}
+
+// ─── Deal stage color coding ──────────────────────────────────────────────────
+
+// Stages grouped by category:
+// new/triaged: decisionmakerboughtin, "83755899" (Growth Session Scheduled / Held)
+// active: "250536552" (Paid), "250536553" (Contract Sent)
+// signed/won: "113267853"
+// lost: "85094266"
+function getStagePillStyle(stage: string | undefined | null): string {
+    if (!stage) return 'bg-gray-500/10 text-gray-400 border-gray-500/20';
+    switch (stage) {
+        case 'decisionmakerboughtin':
+        case '83755899':
+            // new/triaged — orange
+            return 'bg-orange-500/10 text-orange-400 border-orange-500/30';
+        case '250536552':
+        case '250536553':
+            // active/working — blue
+            return 'bg-blue-500/10 text-blue-400 border-blue-500/30';
+        case '113267853':
+            // signed/won — green
+            return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30';
+        case '85094266':
+            // lost — red
+            return 'bg-red-500/10 text-red-400 border-red-500/30';
+        default:
+            // unknown
+            return 'bg-gray-500/10 text-gray-400 border-gray-500/20';
+    }
+}
 
 // ─── Empty state helper ───────────────────────────────────────────────────────
 
@@ -77,13 +120,71 @@ const EmptyState: React.FC<{ message: string }> = ({ message }) => (
     </div>
 );
 
+// ─── Next/Last meeting indicator ──────────────────────────────────────────────
+
+function formatMeetingDate(isoStr: string | undefined): string {
+    if (!isoStr) return '';
+    const d = new Date(isoStr);
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+        + ', '
+        + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+}
+
+interface MeetingIndicatorProps {
+    data: DealDetailsResponse;
+}
+
+const MeetingIndicator: React.FC<MeetingIndicatorProps> = ({ data }) => {
+    const upcoming = data.upcoming_meeting;
+
+    if (upcoming) {
+        const typeLabel = getMeetingTypeLabel(upcoming.meeting?.meeting_type);
+        const dateStr = formatMeetingDate(upcoming.meeting?.start_time);
+        return (
+            <span className="text-[12px] text-text-secondary">
+                <span className="text-text-tertiary mr-1">Next:</span>
+                {typeLabel}
+                {dateStr && <span className="text-text-tertiary"> · {dateStr}</span>}
+            </span>
+        );
+    }
+
+    // Find the most recent past meeting across all buckets
+    const allGroups: DealDetailsMeetingGroup[] = [
+        ...(data.meetings_by_type?.discovery ?? []),
+        ...(data.meetings_by_type?.demo ?? []),
+        ...(data.meetings_by_type?.followup ?? []),
+        ...(data.meetings_by_type?.sdr_triage ?? []),
+    ];
+
+    const nowMs = Date.now();
+    const pastMeetings = allGroups
+        .filter((g) => g.meeting?.start_time && new Date(g.meeting.start_time).getTime() <= nowMs)
+        .sort((a, b) => new Date(b.meeting!.start_time!).getTime() - new Date(a.meeting!.start_time!).getTime());
+
+    if (pastMeetings.length > 0) {
+        const last = pastMeetings[0];
+        const typeLabel = getMeetingTypeLabel(last.meeting?.meeting_type);
+        const dateStr = formatMeetingDate(last.meeting?.start_time);
+        return (
+            <span className="text-[12px] text-text-secondary">
+                <span className="text-text-tertiary mr-1">Last met:</span>
+                {typeLabel}
+                {dateStr && <span className="text-text-tertiary"> · {dateStr}</span>}
+            </span>
+        );
+    }
+
+    return <span className="text-[12px] text-text-tertiary italic">No meetings yet</span>;
+};
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
-const DealDetails: React.FC<DealDetailsProps> = ({ contactId, onBack }) => {
+const DealDetails: React.FC<DealDetailsProps> = ({ contactId, onBack, onOpenMeeting }) => {
     const isLight = useResolvedTheme() === 'light';
     const [data, setData] = useState<DealDetailsResponse | null>(null);
     const [loading, setLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState<TabKey>('profile');
+    const [activeTab, setActiveTab] = useState<TabKey>('summary');
 
     const load = () => {
         window.electronAPI?.convexGetDealDetails?.(contactId)
@@ -92,7 +193,7 @@ const DealDetails: React.FC<DealDetailsProps> = ({ contactId, onBack }) => {
                 if (result && 'error' in result) {
                     setData(null);
                 } else {
-                    setData(result);
+                    setData(result as DealDetailsResponse);
                 }
             })
             .catch(() => setData(null))
@@ -122,6 +223,21 @@ const DealDetails: React.FC<DealDetailsProps> = ({ contactId, onBack }) => {
     const headerCompany = company?.company_name || null;
     const headerTitle = headerCompany ? `${headerName} — ${headerCompany}` : headerName;
 
+    // ─── Past Meetings: flatten + sort descending ─────────────────────────────
+
+    const flatPastMeetings: (DealDetailsMeetingGroup & { _meetingType: string })[] = data
+        ? [
+            ...(data.meetings_by_type?.discovery ?? []).map((g) => ({ ...g, _meetingType: 'discovery' })),
+            ...(data.meetings_by_type?.demo ?? []).map((g) => ({ ...g, _meetingType: 'demo' })),
+            ...(data.meetings_by_type?.followup ?? []).map((g) => ({ ...g, _meetingType: 'followup' })),
+            ...(data.meetings_by_type?.sdr_triage ?? []).map((g) => ({ ...g, _meetingType: 'sdr_triage' })),
+          ].sort((a, b) => {
+              const aMs = a.meeting?.start_time ? new Date(a.meeting.start_time).getTime() : 0;
+              const bMs = b.meeting?.start_time ? new Date(b.meeting.start_time).getTime() : 0;
+              return bMs - aMs; // descending
+          })
+        : [];
+
     // ─── Render ───────────────────────────────────────────────────────────────
 
     return (
@@ -146,13 +262,28 @@ const DealDetails: React.FC<DealDetailsProps> = ({ contactId, onBack }) => {
                             </button>
 
                             {/* Page title */}
-                            <h1 className="text-3xl font-bold text-text-primary tracking-tight">
+                            <h1 className="text-3xl font-bold text-text-primary tracking-tight mb-2">
                                 {loading ? (
                                     <span className="opacity-40">Loading…</span>
                                 ) : (
                                     headerTitle
                                 )}
                             </h1>
+
+                            {/* Header meta row: stage pill + meeting indicator */}
+                            {!loading && (
+                                <div className="flex items-center gap-3 flex-wrap">
+                                    {/* Stage pill */}
+                                    <span
+                                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-medium border ${getStagePillStyle(deal?.deal_stage)}`}
+                                    >
+                                        {deal?.deal_stage ? getDealStageLabel(deal.deal_stage) : 'No deal stage'}
+                                    </span>
+
+                                    {/* Next/last meeting indicator */}
+                                    {data && <MeetingIndicator data={data} />}
+                                </div>
+                            )}
                         </div>
                     </div>
 
@@ -184,6 +315,40 @@ const DealDetails: React.FC<DealDetailsProps> = ({ contactId, onBack }) => {
 
                     {/* Tab content */}
                     <div className="space-y-8">
+                        {/* ── Summary tab ────────────────────────────────────── */}
+                        {activeTab === 'summary' && (
+                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                                {loading ? (
+                                    <div className="text-text-tertiary text-sm py-8">Loading…</div>
+                                ) : data?.cumulative_summary ? (
+                                    <div className="space-y-3">
+                                        {/* Meta line */}
+                                        <div className="text-[11px] text-text-tertiary">
+                                            Generated{' '}
+                                            {data.cumulative_summary._creationTime
+                                                ? new Date(data.cumulative_summary._creationTime).toLocaleString([], {
+                                                      month: 'short',
+                                                      day: 'numeric',
+                                                      year: 'numeric',
+                                                      hour: 'numeric',
+                                                      minute: '2-digit',
+                                                  })
+                                                : 'recently'}{' '}
+                                            · {data.cumulative_summary.generator_model ?? 'claude-sonnet-max'}
+                                        </div>
+                                        {/* Narrative */}
+                                        <div className="prose prose-sm prose-invert max-w-none text-[13px] leading-relaxed [&_h2]:text-[13px] [&_h2]:font-semibold [&_h2]:mt-4 [&_h2]:mb-1 [&_h3]:text-[13px] [&_h3]:font-semibold [&_h3]:mt-4 [&_h3]:mb-1 [&_p]:my-1 [&_ul]:my-1 [&_li]:my-0.5">
+                                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                                {data.cumulative_summary.summary_markdown}
+                                            </ReactMarkdown>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <EmptyState message="No cumulative summary yet — will auto-generate once at least two per-meeting summaries exist for this prospect (runs every 30 min)." />
+                                )}
+                            </motion.div>
+                        )}
+
                         {/* ── Profile tab ──────────────────────────────────── */}
                         {activeTab === 'profile' && (
                             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
@@ -299,78 +464,66 @@ const DealDetails: React.FC<DealDetailsProps> = ({ contactId, onBack }) => {
                             </motion.div>
                         )}
 
-                        {/* ── Discovery Call tab ────────────────────────────── */}
-                        {activeTab === 'discovery' && (
+                        {/* ── Grade tab ──────────────────────────────────────── */}
+                        {activeTab === 'grade' && (
                             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                                {loading ? (
-                                    <div className="text-text-tertiary text-sm py-8">Loading…</div>
-                                ) : (
-                                    <DealCallTypeTab
-                                        meetings={data?.meetings_by_type?.discovery ?? []}
-                                        callTypeLabel="Discovery Call"
-                                    />
-                                )}
+                                <EmptyState message="Deal grading coming in a future update (backlog 1.14)." />
                             </motion.div>
                         )}
 
-                        {/* ── Demo Call tab ──────────────────────────────────── */}
-                        {activeTab === 'demo' && (
+                        {/* ── Past Meetings tab ──────────────────────────────── */}
+                        {activeTab === 'past_meetings' && (
                             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                                 {loading ? (
                                     <div className="text-text-tertiary text-sm py-8">Loading…</div>
+                                ) : flatPastMeetings.length === 0 ? (
+                                    <EmptyState message="No past meetings yet for this prospect." />
                                 ) : (
-                                    <DealCallTypeTab
-                                        meetings={data?.meetings_by_type?.demo ?? []}
-                                        callTypeLabel="Demo Call"
-                                    />
-                                )}
-                            </motion.div>
-                        )}
+                                    <div className="space-y-8">
+                                        {flatPastMeetings.map((group, idx) => {
+                                            const typeLabel = getMeetingTypeLabel(group._meetingType);
+                                            const dateStr = formatMeetingDate(group.meeting?.start_time);
+                                            const summary = group.summary ?? null;
+                                            const meetingRef = group.meeting;
+                                            return (
+                                                <div key={`${group._meetingType}-${idx}`} className="space-y-2">
+                                                    {/* Row: Open pill + heading */}
+                                                    <div className="flex items-start gap-3">
+                                                        {onOpenMeeting && meetingRef && (
+                                                            <button
+                                                                onClick={() => onOpenMeeting(meetingRef)}
+                                                                className={`shrink-0 mt-0.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium border transition-colors ${isLight ? 'bg-bg-elevated text-text-secondary border-border-muted hover:bg-bg-item-active hover:text-text-primary' : 'bg-white/5 text-text-tertiary border-white/10 hover:bg-white/10 hover:text-text-primary'}`}
+                                                            >
+                                                                Open →
+                                                            </button>
+                                                        )}
+                                                        <h3 className="text-[14px] font-semibold text-text-primary leading-snug">
+                                                            {typeLabel}
+                                                            {dateStr && (
+                                                                <span className="font-normal text-text-tertiary ml-2 text-[13px]">on {dateStr}</span>
+                                                            )}
+                                                        </h3>
+                                                    </div>
 
-                        {/* ── Follow Up tab ──────────────────────────────────── */}
-                        {activeTab === 'followup' && (
-                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                                {loading ? (
-                                    <div className="text-text-tertiary text-sm py-8">Loading…</div>
-                                ) : (
-                                    <DealCallTypeTab
-                                        meetings={data?.meetings_by_type?.followup ?? []}
-                                        callTypeLabel="Follow Up"
-                                    />
-                                )}
-                            </motion.div>
-                        )}
+                                                    {/* Summary content */}
+                                                    {summary ? (
+                                                        <div className="prose prose-sm prose-invert max-w-none text-[13px] leading-relaxed [&_h2]:text-[13px] [&_h2]:font-semibold [&_h2]:mt-3 [&_h2]:mb-1 [&_h3]:text-[13px] [&_h3]:font-semibold [&_h3]:mt-3 [&_h3]:mb-1 [&_p]:my-1 [&_ul]:my-1 [&_li]:my-0.5 pl-1">
+                                                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                                                {summary}
+                                                            </ReactMarkdown>
+                                                        </div>
+                                                    ) : (
+                                                        <p className="text-[13px] text-text-tertiary italic pl-1">Summary generating…</p>
+                                                    )}
 
-                        {/* ── Summary tab ────────────────────────────────────── */}
-                        {activeTab === 'summary' && (
-                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                                {loading ? (
-                                    <div className="text-text-tertiary text-sm py-8">Loading…</div>
-                                ) : data?.cumulative_summary ? (
-                                    <div className="space-y-3">
-                                        {/* Meta line */}
-                                        <div className="text-[11px] text-text-tertiary">
-                                            Generated{' '}
-                                            {data.cumulative_summary._creationTime
-                                                ? new Date(data.cumulative_summary._creationTime).toLocaleString([], {
-                                                      month: 'short',
-                                                      day: 'numeric',
-                                                      year: 'numeric',
-                                                      hour: 'numeric',
-                                                      minute: '2-digit',
-                                                  })
-                                                : 'recently'}{' '}
-                                            · {data.cumulative_summary.generator_model ?? 'claude-sonnet-max'}
-                                        </div>
-                                        {/* Narrative */}
-                                        <div className="prose prose-sm prose-invert max-w-none text-[13px] leading-relaxed [&_h2]:text-[13px] [&_h2]:font-semibold [&_h2]:mt-4 [&_h2]:mb-1 [&_h3]:text-[13px] [&_h3]:font-semibold [&_h3]:mt-4 [&_h3]:mb-1 [&_p]:my-1 [&_ul]:my-1 [&_li]:my-0.5">
-                                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                                                {data.cumulative_summary.summary_markdown}
-                                            </ReactMarkdown>
-                                        </div>
+                                                    {/* Divider between entries */}
+                                                    {idx < flatPastMeetings.length - 1 && (
+                                                        <div className={`mt-6 border-t ${isLight ? 'border-black/8' : 'border-white/6'}`} />
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
                                     </div>
-                                ) : (
-                                    <EmptyState message="No cumulative summary yet — will auto-generate once at least two per-meeting summaries exist for this prospect (runs every 30 min)." />
                                 )}
                             </motion.div>
                         )}
@@ -383,13 +536,6 @@ const DealDetails: React.FC<DealDetailsProps> = ({ contactId, onBack }) => {
                                 ) : (
                                     <DealPrepTab upcomingMeeting={data?.upcoming_meeting ?? null} />
                                 )}
-                            </motion.div>
-                        )}
-
-                        {/* ── Grade tab ──────────────────────────────────────── */}
-                        {activeTab === 'grade' && (
-                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                                <EmptyState message="Deal grading coming in a future update (backlog 1.14)." />
                             </motion.div>
                         )}
                     </div>

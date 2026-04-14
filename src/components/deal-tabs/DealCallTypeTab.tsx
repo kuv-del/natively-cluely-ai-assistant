@@ -1,3 +1,5 @@
+// NOTE: deprecated as of 2026-04-14, kept for reference.
+// Replaced by the Past Meetings tab in DealDetails which merges all call types.
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
