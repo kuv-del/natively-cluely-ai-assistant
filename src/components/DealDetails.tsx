@@ -11,6 +11,8 @@ import {
     normalizeUrl,
 } from '../lib/hubspot-mapping';
 import type { DealDetailsResponse } from '../types/deal-details';
+import DealPrepTab from './deal-tabs/DealPrepTab';
+import DealCallTypeTab from './deal-tabs/DealCallTypeTab';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -300,12 +302,11 @@ const DealDetails: React.FC<DealDetailsProps> = ({ contactId, onBack }) => {
                             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                                 {loading ? (
                                     <div className="text-text-tertiary text-sm py-8">Loading…</div>
-                                ) : (data?.meetings_by_type?.discovery?.length ?? 0) === 0 ? (
-                                    <EmptyState message="No discovery calls yet for this prospect." />
                                 ) : (
-                                    <div className="text-[13px] text-text-secondary py-4">
-                                        {data!.meetings_by_type.discovery.length} discovery call{data!.meetings_by_type.discovery.length !== 1 ? 's' : ''} — content coming in Stage 3.
-                                    </div>
+                                    <DealCallTypeTab
+                                        meetings={data?.meetings_by_type?.discovery ?? []}
+                                        callTypeLabel="Discovery Call"
+                                    />
                                 )}
                             </motion.div>
                         )}
@@ -315,12 +316,11 @@ const DealDetails: React.FC<DealDetailsProps> = ({ contactId, onBack }) => {
                             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                                 {loading ? (
                                     <div className="text-text-tertiary text-sm py-8">Loading…</div>
-                                ) : (data?.meetings_by_type?.demo?.length ?? 0) === 0 ? (
-                                    <EmptyState message="No demo calls yet for this prospect." />
                                 ) : (
-                                    <div className="text-[13px] text-text-secondary py-4">
-                                        {data!.meetings_by_type.demo.length} demo call{data!.meetings_by_type.demo.length !== 1 ? 's' : ''} — content coming in Stage 3.
-                                    </div>
+                                    <DealCallTypeTab
+                                        meetings={data?.meetings_by_type?.demo ?? []}
+                                        callTypeLabel="Demo Call"
+                                    />
                                 )}
                             </motion.div>
                         )}
@@ -330,12 +330,11 @@ const DealDetails: React.FC<DealDetailsProps> = ({ contactId, onBack }) => {
                             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                                 {loading ? (
                                     <div className="text-text-tertiary text-sm py-8">Loading…</div>
-                                ) : (data?.meetings_by_type?.followup?.length ?? 0) === 0 ? (
-                                    <EmptyState message="No follow up calls yet for this prospect." />
                                 ) : (
-                                    <div className="text-[13px] text-text-secondary py-4">
-                                        {data!.meetings_by_type.followup.length} follow up call{data!.meetings_by_type.followup.length !== 1 ? 's' : ''} — content coming in Stage 3.
-                                    </div>
+                                    <DealCallTypeTab
+                                        meetings={data?.meetings_by_type?.followup ?? []}
+                                        callTypeLabel="Follow Up"
+                                    />
                                 )}
                             </motion.div>
                         )}
@@ -352,25 +351,8 @@ const DealDetails: React.FC<DealDetailsProps> = ({ contactId, onBack }) => {
                             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                                 {loading ? (
                                     <div className="text-text-tertiary text-sm py-8">Loading…</div>
-                                ) : data?.upcoming_meeting ? (
-                                    <div className="space-y-3">
-                                        <div className="text-[13px] text-text-secondary">
-                                            <span className="font-medium text-text-primary">
-                                                {data.upcoming_meeting.meeting?.title || 'Next meeting'}
-                                            </span>
-                                            {data.upcoming_meeting.meeting?.start_time && (
-                                                <span className="ml-2 text-text-tertiary">
-                                                    on {new Date(data.upcoming_meeting.meeting.start_time).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
-                                                </span>
-                                            )}
-                                            {' — prep dossier '}
-                                            <span className={data.upcoming_meeting.prep_dossier ? 'text-emerald-500' : 'text-text-tertiary italic'}>
-                                                {data.upcoming_meeting.prep_dossier ? 'present' : 'absent'}
-                                            </span>
-                                        </div>
-                                    </div>
                                 ) : (
-                                    <EmptyState message="No upcoming meetings with this prospect." />
+                                    <DealPrepTab upcomingMeeting={data?.upcoming_meeting ?? null} />
                                 )}
                             </motion.div>
                         )}
