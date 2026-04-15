@@ -122,21 +122,15 @@ const MeetingBlock: React.FC<MeetingBlockProps> = ({ group, onOpenMeeting }) => 
 };
 
 /**
- * Formats the transcript for display.
- * Handles both the structured array shape (from DealDetailsMeetingGroup) and the
- * plain string shape (from DealDetailsMeetingRef.transcript which arrives as
- * Array<{speaker, text, timestamp?}> per the type, but backend may send raw string).
+ * Returns the transcript as plain display text. The backend emits transcripts
+ * as raw strings (from call_transcripts or natively_transcripts.transcript),
+ * not structured segments, so we just pass it through.
  */
 function formatTranscript(
     transcript: DealDetailsMeetingGroup['transcript'],
 ): string {
-    if (!transcript || transcript.length === 0) return '';
-    return transcript
-        .map((entry) => {
-            const speaker = entry.speaker ?? 'Unknown';
-            return `[${speaker}]: ${entry.text}`;
-        })
-        .join('\n\n');
+    if (!transcript) return '';
+    return transcript;
 }
 
 // ─── Pill row (multi-meeting) ─────────────────────────────────────────────────

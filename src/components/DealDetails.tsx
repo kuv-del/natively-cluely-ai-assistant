@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useResolvedTheme } from '../hooks/useResolvedTheme';
-import { ArrowLeft, Link, FileText } from 'lucide-react';
+import { ArrowLeft, Link, FileText, ArrowUp } from 'lucide-react';
 import { motion } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -14,6 +14,7 @@ import {
 } from '../lib/hubspot-mapping';
 import type { DealDetailsResponse, DealDetailsMeetingRef, DealDetailsMeetingGroup } from '../types/deal-details';
 import DealPrepTab from './deal-tabs/DealPrepTab';
+import MeetingChatOverlay from './MeetingChatOverlay';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -73,6 +74,7 @@ const MEETING_TYPE_PRETTY: Record<string, string> = {
     demo: 'Demo Call',
     followup: 'Follow Up',
     sdr_triage: 'SDR Triage Call',
+    sdr_discovery: 'SDR Triage Call', // legacy alias — Kate's rule: anyone but Kate took it = triage
     game_planning: 'Game Planning',
 };
 
@@ -185,6 +187,27 @@ const DealDetails: React.FC<DealDetailsProps> = ({ contactId, onBack, onOpenMeet
     const [data, setData] = useState<DealDetailsResponse | null>(null);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<TabKey>('summary');
+    const [expandedTranscriptIdx, setExpandedTranscriptIdx] = useState<number | null>(null);
+
+    // Chat widget state (mirrors MeetingDetails ask-bar pattern)
+    const [query, setQuery] = useState('');
+    const [isChatOpen, setIsChatOpen] = useState(false);
+    const [submittedQuery, setSubmittedQuery] = useState('');
+
+    const handleSubmitQuestion = () => {
+        if (query.trim()) {
+            setSubmittedQuery(query);
+            if (!isChatOpen) setIsChatOpen(true);
+            setQuery('');
+        }
+    };
+
+    const handleInputKeyDown = (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter' && query.trim()) {
+            e.preventDefault();
+            handleSubmitQuestion();
+        }
+    };
 
     const load = () => {
         window.electronAPI?.convexGetDealDetails?.(contactId)
@@ -241,7 +264,7 @@ const DealDetails: React.FC<DealDetailsProps> = ({ contactId, onBack, onOpenMeet
     // ─── Render ───────────────────────────────────────────────────────────────
 
     return (
-        <div className="h-full w-full flex flex-col bg-bg-secondary text-text-secondary font-sans overflow-hidden">
+        <div className="relative h-full w-full flex flex-col bg-bg-secondary text-text-secondary font-sans overflow-hidden">
             <main className="flex-1 overflow-y-auto custom-scrollbar">
                 <motion.div
                     initial={{ opacity: 0, y: 10 }}
@@ -479,46 +502,61 @@ const DealDetails: React.FC<DealDetailsProps> = ({ contactId, onBack, onOpenMeet
                                 ) : flatPastMeetings.length === 0 ? (
                                     <EmptyState message="No past meetings yet for this prospect." />
                                 ) : (
-                                    <div className="space-y-8">
+                                    <div className="space-y-4">
                                         {flatPastMeetings.map((group, idx) => {
                                             const typeLabel = getMeetingTypeLabel(group._meetingType);
                                             const dateStr = formatMeetingDate(group.meeting?.start_time);
                                             const summary = group.summary ?? null;
+                                            const transcript = group.transcript ?? null;
                                             const meetingRef = group.meeting;
+                                            const expanded = expandedTranscriptIdx === idx;
                                             return (
-                                                <div key={`${group._meetingType}-${idx}`} className="space-y-2">
-                                                    {/* Row: Open pill + heading */}
-                                                    <div className="flex items-start gap-3">
+                                                <div
+                                                    key={`${group._meetingType}-${idx}`}
+                                                    className={`rounded-lg border p-4 space-y-2 ${isLight ? 'bg-bg-elevated border-border-muted' : 'bg-white/[0.03] border-white/10'}`}
+                                                >
+                                                    {/* Header: type label + date + Open pill */}
+                                                    <div className="flex items-baseline justify-between gap-3">
+                                                        <div className="text-[14px] font-semibold text-text-primary leading-snug">
+                                                            {typeLabel}
+                                                            {dateStr && <span className="font-normal text-text-tertiary ml-2 text-[12px]">{dateStr}</span>}
+                                                        </div>
                                                         {onOpenMeeting && meetingRef && (
                                                             <button
                                                                 onClick={() => onOpenMeeting(meetingRef)}
-                                                                className={`shrink-0 mt-0.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium border transition-colors ${isLight ? 'bg-bg-elevated text-text-secondary border-border-muted hover:bg-bg-item-active hover:text-text-primary' : 'bg-white/5 text-text-tertiary border-white/10 hover:bg-white/10 hover:text-text-primary'}`}
+                                                                className={`shrink-0 px-2.5 py-0.5 rounded-full text-[11px] font-medium border transition-colors ${isLight ? 'bg-bg-elevated text-text-secondary border-border-muted hover:bg-bg-item-active hover:text-text-primary' : 'bg-white/5 text-text-tertiary border-white/10 hover:bg-white/10 hover:text-text-primary'}`}
                                                             >
                                                                 Open →
                                                             </button>
                                                         )}
-                                                        <h3 className="text-[14px] font-semibold text-text-primary leading-snug">
-                                                            {typeLabel}
-                                                            {dateStr && (
-                                                                <span className="font-normal text-text-tertiary ml-2 text-[13px]">on {dateStr}</span>
-                                                            )}
-                                                        </h3>
                                                     </div>
 
                                                     {/* Summary content */}
                                                     {summary ? (
-                                                        <div className="prose prose-sm prose-invert max-w-none text-[13px] leading-relaxed [&_h2]:text-[13px] [&_h2]:font-semibold [&_h2]:mt-3 [&_h2]:mb-1 [&_h3]:text-[13px] [&_h3]:font-semibold [&_h3]:mt-3 [&_h3]:mb-1 [&_p]:my-1 [&_ul]:my-1 [&_li]:my-0.5 pl-1">
+                                                        <div className="prose prose-sm prose-invert max-w-none text-[12.5px] leading-relaxed [&_h2]:text-[13px] [&_h2]:font-semibold [&_h2]:mt-3 [&_h2]:mb-1 [&_h3]:text-[13px] [&_h3]:font-semibold [&_h3]:mt-3 [&_h3]:mb-1 [&_p]:my-1 [&_ul]:my-1 [&_li]:my-0.5">
                                                             <ReactMarkdown remarkPlugins={[remarkGfm]}>
                                                                 {summary}
                                                             </ReactMarkdown>
                                                         </div>
                                                     ) : (
-                                                        <p className="text-[13px] text-text-tertiary italic pl-1">Summary generating…</p>
+                                                        <p className="text-[12.5px] text-text-tertiary italic">Summary generating…</p>
                                                     )}
 
-                                                    {/* Divider between entries */}
-                                                    {idx < flatPastMeetings.length - 1 && (
-                                                        <div className={`mt-6 border-t ${isLight ? 'border-black/8' : 'border-white/6'}`} />
+                                                    {/* Show / hide full transcript */}
+                                                    {transcript && (
+                                                        <>
+                                                            <button
+                                                                onClick={() => setExpandedTranscriptIdx(expanded ? null : idx)}
+                                                                className="text-[11px] text-emerald-500 hover:text-emerald-400 hover:underline transition-colors"
+                                                            >
+                                                                {expanded ? 'Hide full transcript' : 'Show full transcript'}
+                                                            </button>
+                                                            {expanded && (
+                                                                <div className={`mt-2 p-3 rounded text-[11.5px] leading-relaxed whitespace-pre-wrap max-h-[400px] overflow-y-auto custom-scrollbar ${isLight ? 'bg-bg-secondary text-text-secondary' : 'bg-black/30 text-text-secondary'}`}>
+                                                                    {transcript}
+                                                                </div>
+                                                            )}
+                                                        </>
                                                     )}
                                                 </div>
                                             );
@@ -541,6 +579,134 @@ const DealDetails: React.FC<DealDetailsProps> = ({ contactId, onBack, onOpenMeet
                     </div>
                 </motion.div>
             </main>
+
+            {/* ── Floating Ask Bar ────────────────────────────────────────── */}
+            <div className={`absolute bottom-0 left-0 right-0 p-6 flex justify-center pointer-events-none ${isChatOpen ? 'z-50' : 'z-20'}`}>
+                <div className="w-full max-w-[440px] relative group pointer-events-auto">
+                    <input
+                        type="text"
+                        value={query}
+                        onChange={(e) => setQuery(e.target.value)}
+                        onKeyDown={handleInputKeyDown}
+                        placeholder="Ask about this deal..."
+                        className="w-full pl-5 pr-12 py-3 bg-transparent backdrop-blur-[24px] backdrop-saturate-[140%] shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-white/20 rounded-full text-sm text-text-primary placeholder-text-tertiary/70 focus:outline-none transition-shadow duration-200"
+                    />
+                    <button
+                        onClick={handleSubmitQuestion}
+                        className={`absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-full transition-all duration-200 border border-white/5 ${query.trim() ? 'bg-text-primary text-bg-primary hover:scale-105' : 'bg-bg-item-active text-text-primary hover:bg-bg-item-hover'}`}
+                    >
+                        <ArrowUp size={16} className="transform rotate-45" />
+                    </button>
+                </div>
+            </div>
+
+            {/* ── Chat Overlay (reuses MeetingChatOverlay with a full-deal context blob) ── */}
+            <MeetingChatOverlay
+                isOpen={isChatOpen}
+                onClose={() => {
+                    setIsChatOpen(false);
+                    setQuery('');
+                    setSubmittedQuery('');
+                }}
+                meetingContext={{
+                    // No `id` → MeetingChatOverlay skips RAG and falls through to
+                    // plain context-window chat using the `summary` blob below.
+                    title: headerTitle,
+                    summary: (() => {
+                        // Pack the entire deal into one markdown blob. Routed
+                        // through Claude Max (see useClaudeBackend below), so the
+                        // context window is effectively unbounded for our purposes
+                        // — no truncation, no per-transcript caps. Full transcripts,
+                        // full summaries, full notes, full prep dossier.
+
+                        const parts: string[] = [];
+                        parts.push(`# ${headerTitle}`);
+
+                        // Contact
+                        if (contact) {
+                            parts.push('\n## Contact');
+                            if (contact.email) parts.push(`- Email: ${contact.email}`);
+                            if (contact.phone) parts.push(`- Phone: ${contact.phone}`);
+                            if (contact.hubspot_contact_id) parts.push(`- HubSpot Contact ID: ${contact.hubspot_contact_id}`);
+                        }
+
+                        // Company
+                        if (company) {
+                            parts.push('\n## Company');
+                            if (company.company_name) parts.push(`- Name: ${company.company_name}`);
+                            if (company.company_website) parts.push(`- Website: ${company.company_website}`);
+                            if (company.company_revenue) parts.push(`- Revenue: ${company.company_revenue}`);
+                            if (company.employee_count) parts.push(`- Team Size: ${company.employee_count}`);
+                            if (company.company_location) parts.push(`- Location: ${company.company_location}`);
+                            if ((company as any).company_description) parts.push(`- Description: ${(company as any).company_description}`);
+                        }
+
+                        // Deal
+                        if (deal) {
+                            parts.push('\n## Deal');
+                            if (deal.deal_stage) parts.push(`- Stage: ${getDealStageLabel(deal.deal_stage)}`);
+                            if (deal.sdr_owner_name) parts.push(`- SDR Owner: ${deal.sdr_owner_name}`);
+                            if (deal.hubspot_deal_id) parts.push(`- HubSpot Deal ID: ${deal.hubspot_deal_id}`);
+                        }
+
+                        // Cumulative deal summary
+                        if (data?.cumulative_summary?.summary_markdown) {
+                            parts.push('\n## Cumulative Deal Summary');
+                            parts.push(data.cumulative_summary.summary_markdown);
+                        }
+
+                        // Every past meeting — full summary AND full transcript.
+                        if (flatPastMeetings.length > 0) {
+                            parts.push('\n## Past Meetings');
+                            for (const g of flatPastMeetings) {
+                                const type = getMeetingTypeLabel(g._meetingType);
+                                const date = g.meeting?.start_time
+                                    ? new Date(g.meeting.start_time).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
+                                    : '';
+                                parts.push(`\n### ${type}${date ? ` — ${date}` : ''}`);
+                                if (g.summary) {
+                                    parts.push(`\n**Summary:**\n${g.summary}`);
+                                }
+                                if (g.transcript) {
+                                    parts.push(`\n**Full transcript:**\n${g.transcript}`);
+                                }
+                                if (!g.summary && !g.transcript) {
+                                    parts.push('(no summary or transcript yet)');
+                                }
+                            }
+                        }
+
+                        // SDR triage notes (Slack)
+                        if (data?.sdr_notes && data.sdr_notes.length > 0) {
+                            parts.push('\n## SDR Triage Notes (from Slack)');
+                            for (const n of data.sdr_notes) {
+                                parts.push(`\n- ${n.full_note || ''}`);
+                            }
+                        }
+
+                        // Upcoming meeting context
+                        if (data?.upcoming_meeting) {
+                            const u = data.upcoming_meeting;
+                            parts.push('\n## Upcoming Meeting');
+                            if (u.meeting?.meeting_type) parts.push(`- Type: ${getMeetingTypeLabel(u.meeting.meeting_type)}`);
+                            if (u.meeting?.start_time) parts.push(`- When: ${new Date(u.meeting.start_time).toLocaleString()}`);
+                            if (u.meeting?.zoom_link) parts.push(`- Zoom: ${u.meeting.zoom_link}`);
+                            if (u.prep_dossier) {
+                                parts.push('\n**Prep Dossier:**');
+                                parts.push('```json');
+                                parts.push(JSON.stringify(u.prep_dossier, null, 2));
+                                parts.push('```');
+                            }
+                        }
+
+                        return parts.join('\n');
+                    })(),
+                }}
+                initialQuery={submittedQuery}
+                onNewQuery={(newQuery) => setSubmittedQuery(newQuery)}
+                useClaudeBackend={true}
+                claudeSystemPreamble={`You are helping Kate Schnetzer prep for and understand her sales deal with ${headerTitle}. Use the deal context below — contact, company, cumulative summary, every past meeting with its full summary and transcript, SDR triage notes, and upcoming meeting prep — to answer her question. Cite specific evidence from the transcripts, summaries, or notes. Be concise (2-5 sentences) and direct. If the context doesn't contain an answer, say so rather than guessing.`}
+            />
         </div>
     );
 };

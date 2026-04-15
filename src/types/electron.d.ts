@@ -278,6 +278,36 @@ export interface ElectronAPI {
   // Convex deal details lookup (DealDetails page)
   convexGetDealDetails: (contactId: string) => Promise<import('./deal-details').DealDetailsResponse | { error: string } | null>
 
+  // Claude Max one-shot chat — spawns `claude -p <prompt>` locally via
+  // Kate's Claude Code CLI. Used for deal-level chat and any non-live LLM
+  // call that benefits from Claude's large context window. Deepgram is
+  // reserved for live call transcription only.
+  claudeChatOneshot: (prompt: string) => Promise<{ ok: boolean; answer?: string; error?: string }>
+
+  // Convex meeting prep bundle (MeetingDetails Prep Context section)
+  // Given a meeting_id, returns prior SDR calls (transcripts + summaries) and
+  // sdr_notes for the same contact. Mirrors the Notion parent-item pattern.
+  convexGetMeetingPrepBundle: (meetingId: string) => Promise<{
+    meeting: any;
+    contact_id: string;
+    prior_sdr_calls: Array<{
+      meeting: any;
+      transcript: string | null;
+      summary: string | null;
+      rep_name: string | null;
+      source: string | null;
+      call_date: string | null;
+    }>;
+    sdr_notes: Array<{
+      _id: string;
+      prospect_name: string;
+      company_name?: string;
+      full_note: string;
+      slack_ts: string;
+      demo_meeting_id?: string;
+    }>;
+  } | { error: string } | null>
+
   // backlog 1.10: retrieve deal context already stored in SessionTracker for the live call
   sessionGetDealContext: () => Promise<import('./deal-details').DealDetailsResponse | null>
 

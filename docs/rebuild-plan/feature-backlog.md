@@ -79,6 +79,179 @@ Current `src/slack-triage-sync.ts` writes straight to Notion. Flip it so:
 2. **Secondary script:** new `scripts/sync-sdr-notes-to-notion.ts` reads unsynced rows from Convex and pushes to Notion as a backup surface.
 3. **Later cleanup** (see Phase 1 item 1.12 below): once Natively is live and Kate isn't using Notion for meeting review, delete the Convex→Notion sync script entirely. Notion stops being a dependency.
 
+### Discovery vs SDR Triage classification — mutually exclusive per contact (2026-04-14)
+**Rule (Kate, 2026-04-14):** a contact can have **at most one** meeting of type `discovery` OR `sdr_triage`. Never both, never two.
+- Kate hosted the call → `discovery`
+- Anyone else hosted → `sdr_triage`
+- There is no `sdr_discovery` category (legacy rows backfilled to `sdr_triage`)
+
+**Root cause of prior duplication:** sheet-sync created a `discovery` meeting when the call was booked on Kate's calendar; separately, `discovery-transcript-sync.ts` created a fresh `sdr_triage` row when the Gong Drive transcript arrived. Two rows per call. Fixed 2026-04-14 (evening) — `discovery-transcript-sync` now looks up any existing discovery/sdr_triage row for the same contact on the same date via `meetingsFns.findByContactAndTime` and **patches it in place** (relabel type, rename title, attach transcript) instead of creating a new one.
+
+**SDR transfer pattern:** when an SDR takes a call that was originally booked on Kate's calendar, the sheet-sync `discovery` row gets reclassified to `sdr_triage` the moment the Gong Drive transcript lands. No ghost rows.
+
+---
+
+## Session 2026-04-14 (evening) — shipped + data repair
+
+### Shipped to running Natively (uncommitted batch of 10 files in experiment worktree)
+- **Prior SDR Context widget** on MeetingDetails Prep tab. For any meeting, fetches prior `sdr_triage`/`sdr_discovery` calls for the same contact and renders them as cards: type label, date, rep name, full markdown summary, "Show full transcript" toggle. Also renders any `sdr_notes` rows for the contact. Silent if empty.
+- **Past Meetings card widget** on DealDetails. Replaced the bare heading + summary + divider layout with bordered cards matching the MeetingDetails prep pattern: header row (type + date + Open pill), summary body, "Show full transcript" toggle that expands into a 400px-max scrollable panel. Same UX across both pages.
+- **Chat-with-AI ask bar on DealDetails** (floating at the bottom, same UX as MeetingDetails). Routes to a new Claude Max subprocess path (see below), not Groq/Gemini. Context blob packs the entire deal: contact, company, deal, cumulative summary, every past meeting with full summary AND full transcript, SDR notes, upcoming meeting + prep dossier. No truncation — Claude Max context window handles it.
+- **`useClaudeBackend` prop on `MeetingChatOverlay`** (`src/components/MeetingChatOverlay.tsx`). Opt-in flag that short-circuits the Groq/Gemini/RAG streaming pipeline and calls `window.electronAPI.claudeChatOneshot(prompt)` instead. Non-streaming (one-shot response after a typing indicator). `claudeSystemPreamble` prop lets callers frame the task. MeetingDetails chat is NOT yet switched over — still on Groq/Gemini.
+- **KaTeX math plugin removed from chat renderer** — `remark-math` + `rehype-katex` were interpreting Claude's `$260K-$500K` revenue mentions as inline LaTeX math and rendering them in italic math font. Kept `remarkGfm` for tables/lists.
+
+### New Convex surface area (gobot, committed + deployed to dev)
+- `convex/natively.ts` — new query `prepBundleForMeeting(meeting_id)`. Given any meeting, returns prior SDR calls for the same contact (each with transcript, summary, rep, source, date) + all `sdr_notes` rows for that contact. Read-time aggregation — no new table, no data duplication.
+- `convex/http.ts` — new HTTP route `GET /natively/meeting-prep-bundle?meeting_id=...` wrapping the query.
+- Deployed to dev (`opulent-bandicoot-376`). Verified live against Andres Vargas's discovery meeting: returns 1 prior SDR triage (Kristina Bravo, 17k-char transcript + 770-char summary).
+- Commit `80cebad` pushed to origin.
+
+### New Natively IPC surface
+- `claude-chat-oneshot` IPC handler (`electron/ipcHandlers.ts`). Spawns `claude -p <prompt>` via `child_process.spawn`. Flags: `--no-session-persistence`, `--disable-slash-commands`. CWD: `os.tmpdir()` (sandboxed — blocks CLAUDE.md auto-discovery + prevents `~/Documents` TCC prompts). Explicit `PATH=/opt/homebrew/bin:...` so the binary resolves in Electron's minimal env. Does NOT use `--bare` (would force `ANTHROPIC_API_KEY` and break Kate's OAuth-based Max plan).
+- 120-second timeout, handles ENOENT / non-zero exit / empty output / subprocess throw.
+- Returns `{ ok: true, answer } | { ok: false, error }`.
+
+### Root-cause fixes (gobot, committed)
+- **Summarizer PATH bug** — `~/Library/LaunchAgents/com.go.summary-gen.plist` had `PATH=/Users/jamesleylane/.bun/bin:/usr/local/bin:/usr/bin:/bin`. `claude` lives at `/opt/homebrew/bin/claude`. Every run of `scripts/generate-meeting-summaries.ts` was ENOENT'ing on the first `Bun.spawn(["claude", ...])`. Fixed by prepending `/opt/homebrew/bin:` to the PATH env in the plist and reloading launchctl. Manual verification run summarized 10 meetings (success=10, errors=0). Plist edit is outside the repo; launchd/template file is intentionally NOT committed (would need to be if a template is added later). Before this fix, **zero** rows across 313 `call_transcripts` had any `summary_markdown` populated.
+- **`discovery-transcript-sync` classifier** (`src/discovery-transcript-sync.ts`, commits `0bd0b07` + `1a1f709`). Two changes: (a) classify by `parsed.rep_name` — Kate-run → `discovery`, otherwise → `sdr_triage`. No `sdr_discovery` ever gets created. (b) Before creating a new meeting, call `meetingsFns.findByContactAndTime` and if an existing discovery/sdr_triage row is found for the same contact + date, patch it in place instead of creating a duplicate. Kills the dual-pipeline duplication at the source.
+- **Dead `/gong-sync` HTTP handler removed** (`convex/http.ts`, commit `e98a832`). 145 lines deleted. The handler had no live callers anywhere in the repo — the 119 existing `gong` rows in `call_transcripts` were a one-time backfill from Feb 26 – Mar 4 and have been frozen since. Active Gong ingestion all flows through `discovery-transcript-sync` reading the shared Drive folder. Deployed to dev Convex — `POST /gong-sync` now returns 404.
+
+### Data repair (pure Convex mutations, no git)
+- **119 stale `gong` rows** deleted from `call_transcripts` (the Feb–Mar 2026 one-time backfill residue).
+- **45 duplicate / ghost rows** deleted across 36 contacts with discovery/sdr_triage duplicates:
+  - 12 "SDR transfer" ghost discovery rows (sheet-sync row left behind when Kate's original discovery was transferred to an SDR)
+  - 13 same-call sync-twice `sdr_triage` duplicates (Gong Drive worker ran twice on the same transcript file; title format change between runs left both behind)
+  - 11 backfill-collision discoveries (Group B — my own rep_name-based reclassification created `discovery` rows that duplicated sheet-sync rows)
+  - 3 surviving-ghost-after-dedupe discoveries (Group C — cluster had both same-type dupes AND a cross-type ghost)
+  - 5 empty-meeting same-call dupes (sheet-sync wrote a meeting shell; gong_drive wrote the same call with transcript; collapsed to the row with the transcript)
+  - 1 template hold (`"Discovery Call — Kate Schnetzer"` calendar-slot placeholder, not a real prospect)
+- **12 meetings reclassified** from `sdr_triage`/`sdr_discovery` → `discovery` based on `rep_name` = Kate Schnetzer.
+- **41 `sdr_discovery` rows normalized** to `sdr_triage`. Zero `sdr_discovery` rows remain.
+- **Post-cleanup invariant:** 210 contacts have discovery/sdr_triage rows, zero have 2+. Rule enforced dataset-wide.
+
+### Known bugs surfaced but not fixed
+- **Cumulative summary generator gate is wrong.** `convex/nativelySummariesFns.ts` `contactsWithSufficientSummaries` counts rows in `natively_summaries` where `summary_type === "per_meeting"` — a table nothing writes to. Zero per-meeting rows exist, so the gate always returns empty. The actual cumulative generator (`scripts/generate-deal-summary.ts`) reads from `meetings.summary_markdown` via `dealDetails.byContactId`, not from `natively_summaries.per_meeting`. Fix is ~10 lines: rewrite the gate query to count meetings with non-null `summary_markdown` per contact. Until fixed, only manually-seeded cumulative summaries exist (Michael Koonce is the only one in the table). **Koonce's cumulative summary is now stale** after this session's cleanup deleted his duplicate row — regeneration would need the gate fixed first.
+- **`natively_transcripts` table still has no writer.** Verified exhaustively this session: no mutation anywhere in gobot or the Natively fork writes to this table. Kate's Flow 2 (Natively records her own discovery live → Convex) is still architecturally unbuilt. Table is empty. Sketch of minimal implementation is in Phase 1 (1.1 Storage architecture).
+- **Gong-sourced `call_transcripts` rows have 100% orphan rate** in the original 313-row audit (119 rows, none linked to a `meeting_id`). All deleted in this session's cleanup. When/if a new gong-ingest path is built, it must link meetings by `calendar_event_id` + `contact_id` + time window, not just company name → first contact.
+- **`rep_name` parser captures transcript filler words** for ~20 rows in the broader `call_transcripts` dataset (values like "Oh", "Yeah.", "Okay."). Parser grabs the first speaker utterance from the transcript as the rep name. Cosmetic but visible in the Past Meetings card header on DealDetails for affected rows.
+- **MeetingDetails chat is still on Groq/Gemini.** Per Kate's rule ("Deepgram live only, Claude Max for everything else"), it should be switched to `useClaudeBackend={true}`. Infrastructure is in place — just a one-prop change on the MeetingChatOverlay instance in `MeetingDetails.tsx`.
+- **Meeting reconciler for SDR transfers not built.** When an SDR transfers a meeting off Kate's calendar (deletes the event from her view), the Convex `meetings` row isn't deleted — only the `discovery-transcript-sync` in-place patch covers the case where the Gong Drive transcript later lands. If the transcript never comes (non-demo call, SDR skipped Gong), the stale discovery row persists. Needs a periodic reconciler that walks upcoming Convex meetings and removes any whose `calendar_event_id` is gone from Google Calendar.
+- **Docs still reference the dead `/gong-sync` endpoint** in `docs/architecture.md` and two plan docs under `docs/plans/2026-03-03-transcript-to-notion-sync*.md`. Historical references, safe to leave; can be scrubbed in a docs pass.
+
+### Files changed this session
+
+**gobot (committed + pushed):**
+- `convex/http.ts` — removed `/gong-sync` handler; added `/natively/meeting-prep-bundle` route
+- `convex/natively.ts` — added `prepBundleForMeeting` query
+- `src/discovery-transcript-sync.ts` — classifier by rep_name + collapse-onto-existing-meeting
+
+**Natively experiment worktree (uncommitted — pending Kate's confirmation to batch-commit):**
+- `electron/ipcHandlers.ts` — `convex-get-meeting-prep-bundle` + `claude-chat-oneshot` handlers
+- `electron/preload.ts` — two new IPC bridges + types
+- `src/types/electron.d.ts` — type declarations for both new APIs
+- `src/types/deal-details.ts` — corrected `transcript` type from phantom `Array<{speaker, text, timestamp}>` → `string | null`
+- `src/components/MeetingDetails.tsx` — Prior SDR Context section on Prep tab
+- `src/components/DealDetails.tsx` — Past Meetings card widget + full-context Claude chat
+- `src/components/deal-tabs/DealCallTypeTab.tsx` — fixed `.map()` on string runtime bug uncovered by the type correction
+- `src/components/MeetingChatOverlay.tsx` — `useClaudeBackend` prop, math plugin removed
+
+### 🎯 Priority 1 for 2026-04-15 — test Natively during a real Zoom call
+
+Before any new feature work tomorrow, Kate needs to **run Natively during an actual live Zoom sales call** to validate everything that landed tonight under real conditions. This is a smoke test of the full stack end-to-end: Deepgram live transcription in the header UI, coaching overlay, MeetingDetails capture, post-call summary generation, DealDetails aggregation, prior SDR context surfacing, chat-with-Claude over the full deal.
+
+Gaps or friction surfaced during the live call become the top of the next session's work. Do not block this test on any other feature build.
+
+---
+
+## New backlog items — 2026-04-14 night (Kate's brainstorm)
+
+Not yet sequenced into phases. Captured verbatim so they're not lost; Kate will prioritize in a future session.
+
+### Two-way Google Calendar sync into Natively
+**What:** Full two-way sync between Google Calendar and Natively's internal meeting state. Today Natively only READS from Google Calendar (via `CalendarManager.fetchEventsInternal`) — if an event is edited, cancelled, moved, or added in Google Calendar (on Kate's phone, on the web, via another tool), Natively has to poll + re-read to notice. And changes made inside Natively (event color, reschedule, outcome marking) only write back via isolated helpers (`updateEvent`, `updateEventColor`) that aren't tied to a general sync loop.
+
+**What Kate wants:**
+- Reliable bidirectional sync — a change on either side propagates to the other within seconds (watch/push notifications preferred over polling)
+- Natively's meeting list and calendar widget always reflect the live Google Calendar state
+- When Kate edits event title / time / color / attendees inside Natively, the change lands in Google Calendar immediately
+- Deletions, reschedules, and cancellations handled cleanly — no ghost rows left behind in Natively's UI
+
+**Notes:** Google Calendar supports push notifications via the Calendar API watch channel — that's the reliable path. Polling every N seconds is the fallback. The existing `updateEvent`/`updateEventColor` helpers already handle the write-back direction; what's missing is a consolidated sync engine that keeps the read side fresh AND observes local mutations.
+
+**Dependencies:** Probably wants the "Calendar widget with right-click color change" feature (3.1) to land at the same time — the widget is the UI consumer of the sync.
+
+**Effort:** TBD. Push-notification path needs a public webhook endpoint (VPS-side), polling fallback doesn't.
+
+### Google Calendar widget with two-way sync
+**What:** Full calendar widget rendered inside Natively's launcher (or a dedicated surface), showing Kate's live calendar in Google-Calendar–native format (day / 3-day / week view). Events render in their Google Calendar colors. Interactions write back immediately:
+- Right-click → change color (Blueberry / Lavender / Tomato / Tangerine) — already wired at the IPC layer via `calendarUpdateEventColor`
+- Drag to reschedule — PATCH the event's start/end
+- Delete from right-click menu → PATCH or DELETE via Calendar API
+- Click an event → open its MeetingDetails / DealDetails page
+
+**Relationship to existing items:** This supersedes backlog 3.1 ("Calendar widget with right-click color change") with a broader scope. 3.1 can be folded into this. Also related to the "Next 3 working days" calendar view in the "Larger items not yet started" section — that was scoped 2026-04-13 and skipped; this is the follow-through.
+
+**Dependencies:** Two-way Google Calendar sync (above) should ship first OR in parallel — the widget is the primary consumer of the sync.
+
+### Consolidate navigation: DealDetails without MeetingDetails
+**What:** Experiment with making DealDetails the single meeting-viewing surface, removing MeetingDetails from the navigation flow entirely. Today the UX is: click a meeting in the Launcher → opens MeetingDetails (1:1 per calendar event) → "View Deal" button → DealDetails (cumulative per contact). Kate wants to try: click a meeting → go directly to DealDetails, with that specific meeting auto-selected / scrolled into focus within the Past Meetings (or upcoming) list on the deal page.
+
+**Why:** The Prep and Summary tabs on DealDetails already contain everything MeetingDetails shows for a given meeting, in the context of the whole deal. Navigating through MeetingDetails → DealDetails adds a click and fragments context. Going deal-first matches how Kate thinks about the prospect (contact = deal = story) rather than event-by-event.
+
+**What to test:**
+1. Launch flow: clicking a meeting in the Launcher feed opens DealDetails for that contact, auto-tab to Prep (if upcoming) or Past Meetings (if recorded), auto-scroll to that meeting's card
+2. Keep MeetingDetails around as a fallback for meetings with no linked `contact_id` (stray personal events, Kate-hosted calls with no prospect match)
+3. Move the MeetingDetails in-call chat, live transcript bar, usage view to live-only surfaces rendered INSIDE the deal page context (or keep them in MeetingDetails only for the active in-call state)
+
+**Risk:** DealDetails is busier than MeetingDetails. The Past Meetings tab with 5+ calls + full transcripts could feel heavy compared to a single meeting view. A11y / scroll-position behavior needs thought.
+
+**Dependencies:** Storage unification (1.1) should land first so every past meeting has real data in DealDetails — otherwise collapsing MeetingDetails leaves gaps.
+
+### Nurture planning & scheduling + task manager panel
+**What:** New panel (likely a sidebar or a new launcher route) that combines two things Kate needs in her daily sales workflow:
+1. **Nurture plan management:** for each active prospect, show the current nurture sequence — scheduled touches (emails, calls, follow-ups), their send dates, status (queued / sent / paused), and the content for each. Kate can edit, pause, reschedule, or approve drafts.
+2. **Task manager:** a task queue scoped to her sales workflow — follow up with X, send Y, call Z back, review transcript for A. Integrates with the existing Apple Reminders / Convex goals pipeline on the gobot side OR stands alone with its own store.
+
+**Why together:** Nurture plans and tasks feed each other — a nurture step that needs Kate's personal touch becomes a task; a task completed marks a nurture step done. Rendering them in the same panel keeps both visible at once.
+
+**Overlaps with:** backlog 3.2 (Nurture tab on MeetingDetails) and 4.1 (powerdialer UI). Those are per-meeting or per-list views; this new panel is the persistent cross-prospect view. Likely the nurture tab feeds into this panel's data, and the task manager is a new layer on top.
+
+**Dependencies:** 
+- Stage 5 (Natively write-through to Convex) should be live so prep/summary data feeds the nurture recommender
+- gobot's existing `nurture-coordinator` agent already exists (per `.claude/agents` in gobot) — this panel would be its UI surface
+- HubSpot tasks API integration if we want tasks to sync back to the CRM
+
+### Robust knowledge and coaching docs (sales-specific)
+**What:** Build out a comprehensive internal knowledge base tailored to Kate's sales methodology (Scalable Operating System, Ryan Deiss's frameworks, objection handling, qualification rubrics, pricing conversations, buyer-persona profiles for founders in the $2M–$10M revenue band). This is the content layer that powers Natively's coaching — during a live call the model can pull from these docs to deliver relevant suggestions, and post-call it can cite them when critiquing the call.
+
+**Relationship to 1.3:** Backlog item 1.3 covers "reframe the 13 premium module prompts for sales context." This is broader — prompts are the PROCESSING layer; this is the CONTENT layer the prompts read from. Think of 1.3 as "teach the engine to speak sales" and this as "give the engine a playbook to reference."
+
+**What to build:**
+- A `knowledge/` or `coaching/` directory structured by topic: qualification, pricing, discovery flow, objection library, next-step patterns, buyer psychology, nurture cadences, post-call playbooks
+- Documents in structured formats (markdown with front-matter tags) so the knowledge engine can retrieve them via embeddings / RAG
+- Wired into the existing premium `KnowledgeOrchestrator` / `ContextAssembler` modules (see `dist-electron/premium/electron/knowledge/`)
+- Versioned in the Natively repo so edits flow through git
+
+**Sources:** Scalable Co.'s internal methodology docs (Kate has access), Ryan Deiss's published frameworks, Kate's own notes from successful deals, post-mortem writeups.
+
+**Dependencies:** 1.3 (premium module prompt reframing) — the prompts need to know how to ask the knowledge base for the right document.
+
+### Live coaching alerts (Pluely-style)
+**What:** Real-time in-call coaching alerts that surface during a live Zoom call based on what's happening in the transcript. Modeled on Pluely and similar live-coaching tools — small non-modal notifications that fire as the conversation progresses, suggesting specific moves:
+- "They just mentioned budget — ask for the actual number"
+- "Three minutes of small talk — time to transition to the qualification questions"
+- "They raised a price objection — here's the playbook"
+- "You haven't asked about timeline — ask now"
+- "Strong buying signal detected: they said 'let's do this.' Move to next-step commitment."
+- Silence detection, pace alerts, etc.
+
+**Relationship to existing coaching:** Natively already has the premium `LiveNegotiationAdvisor`, `ObjectionHandler`, `LiveInsightEngine`, `TurnByTurnCoach` modules (see `dist-electron/premium/electron/knowledge/`). These generate suggestions but they're interview-focused today. This item is: (a) reframe them for sales (overlaps with 1.3), (b) surface their output as proactive alerts not just on-demand suggestions, (c) make the alert UX reference-similar to Pluely's visual pattern (small, persistent, non-interrupting).
+
+**Dependencies:**
+- 1.3 (reframe premium prompts for sales)
+- Robust knowledge/coaching docs (above) — alerts need to reference concrete plays, not just generic advice
+- Overlay hydration 1.10 — alerts need the full deal context (prior transcripts, SDR notes, prep dossier) not just the live turn
+
 ---
 
 ## Phased roadmap (Kate's framing — 2026-04-13)
@@ -92,14 +265,14 @@ Current `src/slack-triage-sync.ts` writes straight to Notion. Flip it so:
 | 1.1 | **Storage architecture** — Convex as source of truth for all Natively transcripts, preps, summaries, chats. Local SQLite stays as in-call cache. (DECISION LOCKED tonight — see section below.) | Next up |
 | 1.2 | **Past-meetings pills** under the Prep/Profile/Summary/etc tab strip. Click → navigate to that prior meeting (trivial once storage is unified). | After 1.1 |
 | 1.3 | **Knowledge base revamps** — sales-reframing of the 13 LLM-heavy premium modules currently using interview-coaching prompts. Source: `docs/rebuild-plan/02-premium-modules-architecture.md` | Phase 1 |
-| 1.4 | **SDR notes + SDR call transcript** — when a meeting was preceded by an SDR call, surface BOTH the SDR's triage notes (synced from `#sco-sdr-meetings-booked` Slack channel via `slack-triage-sync` cron) AND the SDR's call transcript (already in Convex `call_transcripts` via the Gong / `discovery-transcript-sync` flow) inside that meeting's MeetingDetails. Likely a dedicated "SDR Context" subsection in the Prep tab, or its own collapsible block. Match by contact_id/deal_id linkage in Convex. | Phase 1 |
+| 1.4 | **SDR notes + SDR call transcript** — when a meeting was preceded by an SDR call, surface BOTH the SDR's triage notes (synced from `#sco-sdr-meetings-booked` Slack channel via `slack-triage-sync` cron) AND the SDR's call transcript (already in Convex `call_transcripts` via the Gong / `discovery-transcript-sync` flow) inside that meeting's MeetingDetails. Likely a dedicated "SDR Context" subsection in the Prep tab, or its own collapsible block. Match by contact_id/deal_id linkage in Convex. | ✅ Shipped 2026-04-14 (evening) — `Prior SDR Context` section on MeetingDetails Prep tab + same widget on DealDetails Past Meetings tab, powered by `natively.prepBundleForMeeting` |
 | 1.5 | **Company & prospect enrichment** — fill out the prospect profile with deeper data (LinkedIn snapshot, recent news, headcount trends, recent deals). Sources: existing gobot enrichment scripts + Convex. | Phase 1 |
 | 1.6 | **Next Steps button + commands** — the structured-output recommendation pipeline from Kate's spec doc, with chat-back corrections that re-output the entire structure preserving order. | Phase 1 |
 | 1.7 | **Test HubSpot updates** — actually fire the approved Next Steps actions through to HubSpot (ship the gobot endpoint that PATCHes deals directly, no Notion in the loop). | Phase 1 |
 | 1.8 | **"SCO" marker on meetings** — Kate wants this **tomorrow**. Visual indicator on calendar events / meeting list rows that distinguishes Scalable Co. sales meetings from personal/other meetings. Likely a small badge or color tag derived from whether the contact has a HubSpot deal in Convex. | **Tomorrow** |
 | 1.9 | **Past calls auto-merged into upcoming/current call's Prep tab** — when Kate opens the Prep tab for an upcoming or in-progress meeting, automatically pull in summaries + transcripts + key signals from ALL prior calls with the same contact (SDR call, prior discovery, prior demo, follow-ups). Renders as a "Previous Conversations" section in the Prep tab — chronological, with each prior call's date / type / summary expandable. Different from past-meetings pills (1.2) which are navigation; this is in-place context aggregation. Both surfaces are powered by the same Convex query once storage is unified. | Phase 1 |
 | 1.10 | **Hydrate in-call overlay with prospect context at startMeeting** — today the overlay (`NativelyInterface`) receives only `calendarEventId` + audio device info when a meeting starts. It has zero context during the live call: no prep dossier, no contact/deal info from Convex, no prior transcripts, no SDR notes. All coaching is done on the live transcript alone. Fix: when `startMeeting` IPC fires, bundle up and pass into the overlay: (a) prep dossier JSON, (b) `/natively/meeting-profile` payload (contact + company + deal), (c) prior meetings' summaries + transcripts for the same `contact_id` / `deal_id`, (d) SDR triage notes if present. Store on `SessionTracker.currentMeetingMetadata` so the RAG pipeline, in-call chat overlay (`MeetingChatOverlay`), and AI suggestion generators can all read from it. Depends on: 1.1 (storage unification — so prior transcripts actually exist in Convex) and the Prospect-tab query (the same cumulative bundle powers both). Circle back after 1.1 + Prospect tab are in. | Phase 1 |
-| 1.11 | **MeetingDetails chat can reach every tab (not just transcript + summary)** — today the chat input at the bottom of MeetingDetails calls `rag:query-meeting`, which only indexes full transcript + summary overview + key points + action items. It cannot see the Prep dossier, the Profile tab's Convex data (contact/company/deal), or the Usage log. Fallback path (when RAG isn't ready) additionally caps transcript at the last 20 turns. Fix in two stages: (a) quick win — extend `buildContextString()` in `MeetingChatOverlay` to also include the prep dossier + profile payload so fallback-mode chat immediately gets richer context (~20-line change, no RAG pipeline touch); (b) bigger win — once DealDetails lands, re-scope the chat from meeting-scoped to contact-scoped, pulling in prior meetings' transcripts + SDR notes via the same cumulative Convex query. Related to 1.10 (overlay hydration) — they both want the same bundle in different surfaces. | Phase 1 |
+| 1.11 | **MeetingDetails chat can reach every tab (not just transcript + summary)** — today the chat input at the bottom of MeetingDetails calls `rag:query-meeting`, which only indexes full transcript + summary overview + key points + action items. It cannot see the Prep dossier, the Profile tab's Convex data (contact/company/deal), or the Usage log. Fallback path (when RAG isn't ready) additionally caps transcript at the last 20 turns. Fix in two stages: (a) quick win — extend `buildContextString()` in `MeetingChatOverlay` to also include the prep dossier + profile payload so fallback-mode chat immediately gets richer context (~20-line change, no RAG pipeline touch); (b) bigger win — once DealDetails lands, re-scope the chat from meeting-scoped to contact-scoped, pulling in prior meetings' transcripts + SDR notes via the same cumulative Convex query. Related to 1.10 (overlay hydration) — they both want the same bundle in different surfaces. | ⚠️ Partial — DealDetails side done 2026-04-14 (evening): floating ask bar + `MeetingChatOverlay` with full deal context (profile + cumulative summary + every past meeting with full transcript + sdr_notes + upcoming prep). Routed through new `claude-chat-oneshot` IPC → `claude -p` via Kate's Max plan (no truncation, no rate limits). **MeetingDetails side still pending** — per Kate's 2026-04-14 rule ("Deepgram live only, Claude Max for everything else") the MeetingDetails chat should also flip to `useClaudeBackend={true}`. One-prop change, infrastructure already shipped. |
 | 1.12 | **Remove Notion endpoints once Natively is live** — cleanup item. Once Kate is using DealDetails as her primary surface for meeting review and deal context, and she's confident nothing else in her workflow still depends on Notion meeting pages, delete: (a) `scripts/sync-sdr-notes-to-notion.ts` (Convex→Notion backup), (b) the Notion push in `src/zoom-transcript-sync.ts` `convex.action(api.notionSync.pushToNotion)`, (c) the Notion sub-item creation in `src/discovery-transcript-sync.ts`, (d) `convex/notionSync.ts` entirely if nothing else calls it. Success criterion: gobot can run with `NOTION_TOKEN` unset and the sales pipeline is unaffected. Do NOT touch Notion MCP server (`src/lib/actions/notion-mcp-server.ts`) — Kate still uses Notion for personal knowledge/tasks, this cleanup only targets the sales-meeting writeback paths. | After Natively is live |
 | 1.13 | **DealDetails page** — new cumulative-per-contact page that sits alongside MeetingDetails (MeetingDetails stays 1:1 per meeting, untouched). Contact-first: keyed by `contact_id` because the contact IS the deal. Header: `{First} {Last} — {Company}`. Tabs: **Discovery Call \| Demo Call \| Follow Up \| Summary \| Prep \| Profile \| Grade**. Each meeting-type tab shows per-call summary up top + transcript below, with secondary pills if there are multiple calls of that type. Summary tab is a cumulative deal narrative synthesized across all calls. Prep tab shows the dossier for the next upcoming meeting. Profile tab reuses the existing MeetingDetails Profile view. Grade tab is a placeholder for 1.14. Nav entry point: "View Deal" button on MeetingDetails header (only renders when the meeting has a linked `contact_id`). See "DealDetails waterfall" section below for the full build order. | Phase 1 |
 | 1.14 | **Deal grading assessment (Grade tab)** — future build. Placeholder tab in the DealDetails page today. Eventually renders a structured scoring rubric for the deal: MEDDIC coverage, urgency, intent, qualification status, stakeholder map, offer state, next-step clarity. Generated by a dedicated scoring prompt that reads the cumulative deal summary + all per-meeting summaries + the prep dossier + the SDR notes and outputs a numerical score (1-10) across each dimension plus a narrative verdict. Stores to a new `deal_grades` table in Convex keyed by `contact_id` with history (one row per regeneration so Kate can see the score move over time). Triggered manually from the tab via a "Regenerate grade" button, and automatically after any new transcript + summary lands for this contact. **Depends on:** 1.13 DealDetails scaffold + Stage 1 summary generation job + Stage 4 cumulative summary. **Model:** Claude Sonnet via local Max plan (same runner as summary jobs). | Phase 1, after 1.13 lands |
@@ -451,7 +624,7 @@ Separate session. Real build is the deal grading assessment — rubric + scoring
 
 - **Convex live deployment:** `opulent-bandicoot-376` (set as `CONVEX_URL=https://opulent-bandicoot-376.convex.cloud` in `~/gobot/.env`). The "prod" deployment `determined-chinchilla-655` is unused — DO NOT push there.
 - **Convex deploy command for Natively-related changes:** `cd ~/gobot && bunx convex dev --once` (NOT `bunx convex deploy`, which targets prod).
-- **HubSpot portal id for Kate's account:** `21182745` (used for app.hubspot.com URLs). NOT `24045483` (that's the workflow account id used in BCC and workflow URLs).
+- **HubSpot portal id for Kate's account:** `24045483` (verified via BCC address `24045483@bcc.hubspot.com`). Used for ALL `app.hubspot.com` URLs — contacts, deals, companies, workflows. The older `21182745` value in earlier versions of this doc and in `src/lib/hubspot-mapping.ts` was wrong and was fixed in commit `f88f2df` / natively SESSION_HANDOFF 2026-04-14. The canonical helpers are `hubspotContactUrl()`, `hubspotDealUrl()`, `hubspotCompanyUrl()` in `src/lib/hubspot-mapping.ts` — never hardcode.
 - **HubSpot deal stage map source of truth:** `gobot/src/lib/sales/hubspot-config.ts` `DEAL_STAGE_MAP`. Mirrored in `natively/src/lib/hubspot-mapping.ts`.
 - **Smart Calendar Paperclip plugin** (read-only reference): `/Users/jamesleylane/client-scalable/plugins/plugin-smart-calendar/`. Has `data-layer.ts` + `shared-types.ts` with the same patterns Natively uses now. Don't re-extract — Natively has its own implementation.
 - **Live Call Companion plugin** (read-only reference): `/Users/jamesleylane/client-scalable/plugins/plugin-live-call-companion/`. Scaffold only — not built out. The transcript-extraction pipeline for Next Steps actions has to be built fresh in Natively.

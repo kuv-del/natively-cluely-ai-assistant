@@ -241,6 +241,12 @@ interface ElectronAPI {
   // Convex deal details lookup (DealDetails page)
   convexGetDealDetails: (contactId: string) => Promise<any>
 
+  // Convex meeting prep bundle (MeetingDetails Prep Context section)
+  convexGetMeetingPrepBundle: (meetingId: string) => Promise<any>
+
+  // Claude Max one-shot chat — spawns `claude -p <prompt>`. Non-live LLM path.
+  claudeChatOneshot: (prompt: string) => Promise<{ ok: boolean; answer?: string; error?: string }>
+
   // backlog 1.10: retrieve the deal context already stored in SessionTracker for the live call
   sessionGetDealContext: () => Promise<any>
 
@@ -978,6 +984,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   calendarUpdateEventColor: (eventId: string, colorId: string) => ipcRenderer.invoke('calendar-update-event-color', eventId, colorId),
   convexGetMeetingProfile: (calendarEventId: string) => ipcRenderer.invoke('convex-get-meeting-profile', calendarEventId),
   convexGetDealDetails: (contactId: string) => ipcRenderer.invoke('convex-get-deal-details', contactId),
+  convexGetMeetingPrepBundle: (meetingId: string) => ipcRenderer.invoke('convex-get-meeting-prep-bundle', meetingId),
+  claudeChatOneshot: (prompt: string) => ipcRenderer.invoke('claude-chat-oneshot', prompt),
   // backlog 1.10: retrieve deal context from SessionTracker for the live call
   sessionGetDealContext: () => ipcRenderer.invoke('session-get-deal-context'),
 

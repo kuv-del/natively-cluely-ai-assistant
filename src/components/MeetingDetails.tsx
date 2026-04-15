@@ -96,6 +96,27 @@ const MeetingDetails: React.FC<MeetingDetailsProps> = ({ meeting: initialMeeting
     } | null>(null);
     const [profileChecked, setProfileChecked] = useState(false);
 
+    // Prior SDR context (triage transcripts + sdr_notes) for this meeting's contact.
+    const [prepBundle, setPrepBundle] = useState<{
+        prior_sdr_calls: Array<{
+            meeting: any;
+            transcript: string | null;
+            summary: string | null;
+            rep_name: string | null;
+            source: string | null;
+            call_date: string | null;
+        }>;
+        sdr_notes: Array<{
+            _id: string;
+            prospect_name: string;
+            company_name?: string;
+            full_note: string;
+            slack_ts: string;
+        }>;
+    } | null>(null);
+    const [prepBundleChecked, setPrepBundleChecked] = useState(false);
+    const [expandedTranscriptIdx, setExpandedTranscriptIdx] = useState<number | null>(null);
+
     // Fetch Convex profile (contact + company + deal) for this meeting.
     // Re-fetches on calendar event id change AND on window focus so deal-stage
     // updates from the HubSpot webhook propagate when Kate switches back.
@@ -129,6 +150,35 @@ const MeetingDetails: React.FC<MeetingDetailsProps> = ({ meeting: initialMeeting
             window.removeEventListener('focus', onFocus);
         };
     }, [meeting.calendarEventId]);
+
+    // Fetch prior SDR prep context (triage transcripts + sdr_notes) once the
+    // profile resolves a Convex meeting id.
+    useEffect(() => {
+        let cancelled = false;
+        const meetingId = profile?.meeting?.id;
+        if (!meetingId) {
+            if (profileChecked) setPrepBundleChecked(true);
+            return;
+        }
+        setPrepBundleChecked(false);
+        window.electronAPI?.convexGetMeetingPrepBundle?.(meetingId)
+            .then((data) => {
+                if (cancelled) return;
+                if (data && !('error' in data)) {
+                    setPrepBundle(data as any);
+                } else {
+                    setPrepBundle(null);
+                }
+                setPrepBundleChecked(true);
+            })
+            .catch(() => {
+                if (!cancelled) {
+                    setPrepBundle(null);
+                    setPrepBundleChecked(true);
+                }
+            });
+        return () => { cancelled = true; };
+    }, [profile?.meeting?.id, profileChecked]);
 
     // Fetch the dossier (if any) for this meeting's calendar event id.
     // Default the active tab to 'prep' if a dossier exists.
@@ -376,6 +426,75 @@ ${meeting.detailedSummary.keyPoints?.map(item => `- ${item}`).join('\n') || 'Non
                     <div className="space-y-8">
                         {activeTab === 'prep' && (
                             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                                {/* ── Prior SDR Context ─────────────────────────────── */}
+                                {prepBundle && (prepBundle.prior_sdr_calls.length > 0 || prepBundle.sdr_notes.length > 0) && (
+                                    <div className="mb-8 space-y-6">
+                                        <h3 className="text-[11px] uppercase tracking-wider text-text-tertiary font-bold">
+                                            Prior SDR Context
+                                        </h3>
+                                        {prepBundle.prior_sdr_calls.map((call, idx) => {
+                                            const dateStr = call.call_date
+                                                ? new Date(call.call_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                                                : '';
+                                            // Kate's rule: sdr_triage and sdr_discovery (legacy) both mean
+                                            // "someone other than Kate ran this call" — show as SDR Triage.
+                                            const typeLabel = (call.meeting?.meeting_type === 'sdr_triage' || call.meeting?.meeting_type === 'sdr_discovery')
+                                                ? 'SDR Triage Call'
+                                                : call.meeting?.meeting_type ?? 'SDR Call';
+                                            const expanded = expandedTranscriptIdx === idx;
+                                            return (
+                                                <div key={`sdr-call-${idx}`} className={`rounded-lg border p-4 space-y-2 ${isLight ? 'bg-bg-elevated border-border-muted' : 'bg-white/[0.03] border-white/10'}`}>
+                                                    <div className="flex items-baseline justify-between gap-3">
+                                                        <div className="text-[13px] font-semibold text-text-primary">
+                                                            {typeLabel}
+                                                            {dateStr && <span className="font-normal text-text-tertiary ml-2 text-[12px]">{dateStr}</span>}
+                                                        </div>
+                                                        {call.rep_name && (
+                                                            <div className="text-[11px] text-text-tertiary shrink-0">SDR: {call.rep_name}</div>
+                                                        )}
+                                                    </div>
+                                                    {call.summary ? (
+                                                        <div className="prose prose-sm prose-invert max-w-none text-[12.5px] leading-relaxed [&_p]:my-1 [&_ul]:my-1 [&_li]:my-0.5">
+                                                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                                                {call.summary}
+                                                            </ReactMarkdown>
+                                                        </div>
+                                                    ) : (
+                                                        <div className="text-[12px] text-text-tertiary italic">Summary generating…</div>
+                                                    )}
+                                                    {call.transcript && (
+                                                        <>
+                                                            <button
+                                                                onClick={() => setExpandedTranscriptIdx(expanded ? null : idx)}
+                                                                className="text-[11px] text-emerald-500 hover:text-emerald-400 hover:underline transition-colors"
+                                                            >
+                                                                {expanded ? 'Hide full transcript' : 'Show full transcript'}
+                                                            </button>
+                                                            {expanded && (
+                                                                <div className={`mt-2 p-3 rounded text-[11.5px] leading-relaxed whitespace-pre-wrap max-h-[400px] overflow-y-auto custom-scrollbar ${isLight ? 'bg-bg-secondary text-text-secondary' : 'bg-black/30 text-text-secondary'}`}>
+                                                                    {call.transcript}
+                                                                </div>
+                                                            )}
+                                                        </>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                        {prepBundle.sdr_notes.length > 0 && (
+                                            <div className="space-y-2">
+                                                <h4 className="text-[11px] uppercase tracking-wider text-text-tertiary font-bold">
+                                                    SDR Triage Notes ({prepBundle.sdr_notes.length})
+                                                </h4>
+                                                {prepBundle.sdr_notes.map((note) => (
+                                                    <div key={note._id} className={`rounded-lg border p-4 text-[12.5px] leading-relaxed whitespace-pre-wrap ${isLight ? 'bg-bg-elevated border-border-muted text-text-secondary' : 'bg-white/[0.03] border-white/10 text-text-secondary'}`}>
+                                                        {note.full_note}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
                                 {prepDossier ? (
                                     <DossierView dossier={prepDossier} variant="page" readOnly={!meeting.isUpcoming} />
                                 ) : !prepChecked ? (

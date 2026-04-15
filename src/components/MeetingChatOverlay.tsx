@@ -38,6 +38,19 @@ interface MeetingChatOverlayProps {
     meetingContext: MeetingContext;
     initialQuery?: string;
     onNewQuery: (query: string) => void;
+    /**
+     * When true, routes each question through `claude -p` (Claude Max CLI
+     * subprocess) instead of Groq/Gemini. Used for deal-level chat where we
+     * need Claude's larger context window and there's no per-meeting RAG
+     * index to query. Non-streaming — the full answer arrives in one shot.
+     */
+    useClaudeBackend?: boolean;
+    /**
+     * Optional system-prompt preamble prepended to the context blob when
+     * `useClaudeBackend` is true. Lets callers frame the task (e.g. "You are
+     * helping Kate prep for a sales deal…") without rewriting the component.
+     */
+    claudeSystemPreamble?: string;
 }
 
 type ChatState = 'idle' | 'opening' | 'waiting_for_llm' | 'streaming_response' | 'error' | 'closing';
@@ -106,8 +119,10 @@ const AssistantMessage: React.FC<{ content: string; isStreaming?: boolean }> = (
             <div className="text-text-primary text-[15px] leading-relaxed max-w-[85%]">
                 <div className="markdown-content">
                     <ReactMarkdown
-                        remarkPlugins={[remarkGfm, remarkMath]}
-                        rehypePlugins={[rehypeKatex]}
+                        // Math plugins intentionally disabled: sales context contains
+                        // lots of `$260K` style amounts which KaTeX misinterprets as
+                        // inline math delimiters and renders in italic math font.
+                        remarkPlugins={[remarkGfm]}
                         components={{
                             p: ({ node, ...props }: any) => <p className="mb-2 last:mb-0 whitespace-pre-wrap" {...props} />,
                             a: ({ node, ...props }: any) => <a className="text-blue-500 hover:underline" {...props} />,
@@ -188,6 +203,8 @@ const MeetingChatOverlay: React.FC<MeetingChatOverlayProps> = ({
     meetingContext,
     initialQuery = '',
     // onNewQuery
+    useClaudeBackend = false,
+    claudeSystemPreamble,
 }) => {
     const [messages, setMessages] = useState<Message[]>([]);
     const [chatState, setChatState] = useState<ChatState>('idle');
@@ -306,6 +323,39 @@ const MeetingChatOverlay: React.FC<MeetingChatOverlayProps> = ({
                 content: '',
                 isStreaming: true
             }]);
+
+            // ── Claude Max one-shot path (deal-level chat, non-live LLM) ──
+            // Short-circuits the Groq/Gemini streaming pipeline. Builds a
+            // single prompt from the preamble + context blob + question and
+            // waits for the full response.
+            if (useClaudeBackend) {
+                const contextString = buildContextString();
+                const preamble = claudeSystemPreamble || 'You are helping Kate understand and prep for a sales deal. Use the context below to answer her question. Cite specific evidence from transcripts, summaries, or notes when relevant. If information is not in the context, say so clearly rather than guessing.';
+                const fullPrompt = `${preamble}\n\n---\n\n${contextString}\n\n---\n\nKate's question: ${question}`;
+
+                try {
+                    const result = await window.electronAPI?.claudeChatOneshot(fullPrompt);
+                    if (!result || !result.ok) {
+                        console.error('[MeetingChat] claude subprocess error:', result?.error);
+                        setMessages(prev => prev.filter(msg => msg.id !== assistantMessageId));
+                        setErrorMessage(`Claude error: ${result?.error || 'unknown'}`);
+                        setChatState('error');
+                        return;
+                    }
+                    setMessages(prev => prev.map(msg =>
+                        msg.id === assistantMessageId
+                            ? { ...msg, content: result.answer || '', isStreaming: false }
+                            : msg
+                    ));
+                    setChatState('idle');
+                } catch (err: any) {
+                    console.error('[MeetingChat] claude path threw:', err);
+                    setMessages(prev => prev.filter(msg => msg.id !== assistantMessageId));
+                    setErrorMessage(`Claude path failed: ${err?.message || 'unknown'}`);
+                    setChatState('error');
+                }
+                return;
+            }
 
             // Set up RAG streaming listeners (RAF-batched to avoid per-token re-renders)
             streamBuffer.reset();

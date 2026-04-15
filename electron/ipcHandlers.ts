@@ -2423,6 +2423,109 @@ export function initializeIpcHandlers(appState: AppState): void {
     }
   });
 
+  // ── Convex meeting prep bundle (Prep Context section on MeetingDetails) ──
+  // Prior SDR calls (transcript + summary) + sdr_notes for the same contact.
+  safeHandle("convex-get-meeting-prep-bundle", async (_, meetingId: string) => {
+    if (!meetingId) return { error: "meetingId is required" };
+    try {
+      const url = `https://opulent-bandicoot-376.convex.site/natively/meeting-prep-bundle?meeting_id=${encodeURIComponent(meetingId)}`;
+      const resp = await fetch(url);
+      if (!resp.ok) {
+        console.warn(`[IPC] convex-get-meeting-prep-bundle non-200: ${resp.status}`);
+        return { error: `HTTP ${resp.status}` };
+      }
+      return await resp.json();
+    } catch (err) {
+      console.error('[IPC] convex-get-meeting-prep-bundle failed:', err);
+      return { error: String(err) };
+    }
+  });
+
+  // ── Claude Max one-shot chat ─────────────────────────────────────────────
+  // Spawns `claude -p <prompt>` via Kate's local Claude Max CLI. Used for
+  // deal-level chat (DealDetails) and anywhere else we need a big-context
+  // non-live LLM call. Deepgram is ONLY for live transcription in the
+  // call header UI; everything else routes through this path.
+  //
+  // Returns { ok: true, answer: string } or { ok: false, error: string }.
+  // Caller is responsible for building the full prompt (system + context +
+  // question). No streaming — one-shot response.
+  safeHandle("claude-chat-oneshot", async (_, prompt: string) => {
+    if (!prompt || typeof prompt !== 'string') {
+      return { ok: false, error: "prompt is required" };
+    }
+    try {
+      const { spawn } = await import('child_process');
+      const os = await import('os');
+      return await new Promise<{ ok: boolean; answer?: string; error?: string }>((resolve) => {
+        // Run in a sandboxed tmp cwd so Claude's CLAUDE.md auto-discovery
+        // and session-state writes don't walk into ~/Documents and trigger
+        // macOS TCC prompts. Flags below disable the rest:
+        //   --no-session-persistence  -> no session files written to disk
+        //   --disable-slash-commands  -> no skill auto-discovery (doesn't
+        //                                scan ~/.claude/skills or project dirs)
+        // We do NOT use --bare because it forces ANTHROPIC_API_KEY auth and
+        // Kate's Claude Max uses OAuth (keychain).
+        const proc = spawn(
+          'claude',
+          ['-p', '--no-session-persistence', '--disable-slash-commands', prompt],
+          {
+            cwd: os.tmpdir(),
+            env: {
+              ...process.env,
+              PATH: `/opt/homebrew/bin:/usr/local/bin:${process.env.PATH || '/usr/bin:/bin'}`,
+            },
+          }
+        );
+
+        let stdout = '';
+        let stderr = '';
+        let settled = false;
+
+        const timeout = setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          try { proc.kill('SIGTERM'); } catch { /* ignore */ }
+          resolve({ ok: false, error: 'claude subprocess timed out after 120s' });
+        }, 120_000);
+
+        proc.stdout.on('data', (chunk: Buffer) => { stdout += chunk.toString(); });
+        proc.stderr.on('data', (chunk: Buffer) => { stderr += chunk.toString(); });
+
+        proc.on('error', (err: any) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timeout);
+          if (err?.code === 'ENOENT') {
+            resolve({ ok: false, error: 'claude binary not found. Install Claude Code and ensure /opt/homebrew/bin is on PATH.' });
+          } else {
+            resolve({ ok: false, error: `subprocess error: ${err?.message || String(err)}` });
+          }
+        });
+
+        proc.on('close', (code: number | null) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timeout);
+          if (code !== 0) {
+            const detail = stderr.trim() || stdout.trim() || `exit code ${code}`;
+            resolve({ ok: false, error: `claude exited ${code}: ${detail.slice(0, 300)}` });
+            return;
+          }
+          const answer = stdout.trim();
+          if (!answer) {
+            resolve({ ok: false, error: 'claude returned empty output' });
+            return;
+          }
+          resolve({ ok: true, answer });
+        });
+      });
+    } catch (err: any) {
+      console.error('[IPC] claude-chat-oneshot failed:', err);
+      return { ok: false, error: String(err?.message || err) };
+    }
+  });
+
   // backlog 1.10: retrieve deal context stored in SessionTracker for the live call
   safeHandle("session-get-deal-context", async () => {
     return appState.getIntelligenceManager().getDealContext();

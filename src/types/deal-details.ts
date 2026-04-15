@@ -39,13 +39,15 @@ export interface DealDetailsMeetingRef {
     zoom_link?: string;
     source?: string;
     summary_markdown?: string | null;
-    transcript?: Array<{ speaker: string; text: string; timestamp?: number }>;
 }
 
 export interface DealDetailsMeetingGroup {
     meeting: DealDetailsMeetingRef;
-    transcript?: Array<{ speaker: string; text: string; timestamp?: number }>;
+    /** Raw transcript text from call_transcripts (Zoom/Gong Drive) or natively_transcripts. */
+    transcript?: string | null;
     summary?: string | null;
+    /** "natively" | "zoom" | "gong_drive" | "other" — origin of the transcript+summary. */
+    source?: string;
 }
 
 export interface DealDetailsUpcomingMeeting {
