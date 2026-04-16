@@ -419,7 +419,21 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
     // a Meeting object that carries the calendarEventId so the MeetingDetails Prep
     // tab can look up the dossier file. Summary / Transcript / Usage tabs will show
     // empty states until the meeting is actually recorded.
-    const handleOpenUpcomingMeeting = (event: any) => {
+    const handleOpenUpcomingMeeting = async (event: any) => {
+        setForwardMeeting(null);
+
+        // Try to resolve contact → open DealDetails if found
+        if (event.id && window.electronAPI?.convexGetMeetingProfile) {
+            try {
+                const profile = await window.electronAPI.convexGetMeetingProfile(event.id);
+                if (profile?.meeting?.contact_id) {
+                    setSelectedDealContactId(profile.meeting.contact_id);
+                    return;
+                }
+            } catch {}
+        }
+
+        // Fallback: open MeetingDetails with synthetic Meeting
         const synthetic: Meeting = {
             id: `upcoming-${event.id}`,
             title: event.title || '(Untitled meeting)',
@@ -431,7 +445,6 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
             transcript: [],
             usage: [],
         };
-        setForwardMeeting(null);
         setSelectedMeeting(synthetic);
     };
 

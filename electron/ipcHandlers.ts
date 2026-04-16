@@ -2104,6 +2104,9 @@ export function initializeIpcHandlers(appState: AppState): void {
     ];
 
     console.log(`[IPC] get-recent-meetings: returning ${merged.length} total (${localMeetings.length} local + ${merged.length - localMeetings.length} convex)`);
+    if (convexMeetings.length > 0) {
+      console.log(`[IPC] Sample Convex meeting: ${JSON.stringify({ id: convexMeetings[0].id, title: convexMeetings[0].title, contactId: convexMeetings[0].contactId, calendarEventId: convexMeetings[0].calendarEventId })}`);
+    }
     return merged;
   });
 
