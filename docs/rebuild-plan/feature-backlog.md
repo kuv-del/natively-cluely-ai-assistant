@@ -139,6 +139,12 @@ Current `src/slack-triage-sync.ts` writes straight to Notion. Flip it so:
 | 4.4 | **Larger calendar view** — a full calendar surface (week / month) larger than the top hero widget. Probably a new Launcher route. | Phase 4 |
 | 4.5 | **macOS menu bar dropdown** with upcoming meetings (Notion Calendar style) — moved here from earlier "parked" section. | Phase 4 |
 
+### Known bugs
+
+| # | Bug | Status |
+|---|-----|--------|
+| B1 | **SDR triage call transcripts missing in DealDetails** — Patrick Spellman and Ginger Tenny show SDR triage call summaries in Past Meetings but the actual call transcripts are missing. Previously worked. Likely a regression in how DealDetails queries or displays transcripts from `call_transcripts` in Convex. Investigate: does the Convex endpoint return the transcript field? Does the UI render it? | Open |
+
 ### Side note — verify before building
 
 - **Cross-meeting search.** Kate says she might already have this via the search bar at the top of the Launcher. Verify before scoping a new feature. The current Launcher header has a search input but I haven't traced whether it's wired to anything beyond meeting titles.
