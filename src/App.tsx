@@ -29,6 +29,7 @@ import {
 } from './premium'
 import { analytics } from "./lib/analytics/analytics.service"
 import { ErrorBoundary } from "./components/ErrorBoundary"
+import MeetingPopup from './components/MeetingPopup'
 
 const queryClient = new QueryClient()
 
@@ -39,9 +40,10 @@ const App: React.FC = () => {
   const isModelSelectorWindow = new URLSearchParams(window.location.search).get('window') === 'model-selector';
   const isCropperWindow = new URLSearchParams(window.location.search).get('window') === 'cropper';
   const isScriptHelperWindow = new URLSearchParams(window.location.search).get('window') === 'script-helper';
+  const isMeetingPopupWindow = new URLSearchParams(window.location.search).get('window') === 'meeting-popup';
 
   // Default to launcher if not specified (dev mode safety)
-  const isDefault = !isSettingsWindow && !isOverlayWindow && !isModelSelectorWindow && !isCropperWindow && !isScriptHelperWindow;
+  const isDefault = !isSettingsWindow && !isOverlayWindow && !isModelSelectorWindow && !isCropperWindow && !isScriptHelperWindow && !isMeetingPopupWindow;
 
   if (isCropperWindow) {
     const Cropper = React.lazy(() => import('./components/Cropper'));
@@ -50,6 +52,10 @@ const App: React.FC = () => {
         <Cropper />
       </React.Suspense>
     );
+  }
+
+  if (isMeetingPopupWindow) {
+    return <MeetingPopup />;
   }
 
   if (isScriptHelperWindow) {
