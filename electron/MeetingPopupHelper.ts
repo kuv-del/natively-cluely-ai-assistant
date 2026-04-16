@@ -49,9 +49,9 @@ export class MeetingPopupHelper {
     private createWindow(): void {
         const primary = screen.getPrimaryDisplay()
         const { x: dx, y: dy, width: dw } = primary.workArea
-        const marginRight = 20
+        // Center horizontally, near the top
         const marginTop = 20
-        const defaultX = dx + dw - POPUP_WIDTH - marginRight
+        const defaultX = dx + Math.round((dw - POPUP_WIDTH) / 2)
         const defaultY = dy + marginTop
 
         this.popupWindow = new BrowserWindow({
