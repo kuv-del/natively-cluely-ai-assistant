@@ -177,14 +177,118 @@ export class MeetingPersistence {
 
             DatabaseManager.getInstance().saveMeeting(meetingData, data.startTime, data.durationMs);
 
-            // Metadata was already snapshotted before session.reset() — nothing to clear here.
-
             // Notify Frontend to refresh list
             const wins = require('electron').BrowserWindow.getAllWindows();
             wins.forEach((w: any) => w.webContents.send('meetings-updated'));
 
         } catch (error) {
             console.error('[MeetingPersistence] Failed to save meeting:', error);
+        }
+
+        // ── Convex write-through + speaker name labeling ─────────────────────
+        if (calendarEventId) {
+            try {
+                // 1. Fetch calendar event for attendee names
+                const { CalendarManager } = require('./services/CalendarManager');
+                const calMgr = CalendarManager.getInstance();
+                let events: any[] = [];
+                try { events = await calMgr.getUpcomingEvents(true); } catch {}
+                const event = events.find((e: any) => e.id === calendarEventId);
+                const attendees: Array<{ email: string; name: string | null }> = event?.attendees ?? [];
+
+                // 2. Replace speaker labels with real names
+                const labeledSegments = (data.transcript || [])
+                    .filter((seg: TranscriptSegment) => seg.final)
+                    .map((seg: TranscriptSegment) => {
+                        let speaker = seg.speaker;
+                        if (speaker === 'user') {
+                            speaker = 'Kate Schnetzer';
+                        } else if (speaker === 'interviewer') {
+                            const guest = attendees.find((a: any) =>
+                                a.email && !a.email.includes('kate.schnetzer') && !a.email.includes('schnetzerfamily')
+                            );
+                            speaker = guest?.name || 'Guest';
+                        }
+                        return { speaker, text: seg.text, timestamp: seg.timestamp };
+                    });
+
+                // 3. Full transcript text for search
+                const fullTranscriptText = labeledSegments
+                    .map((s: any) => `${s.speaker}: ${s.text}`)
+                    .join('\n');
+
+                // 4. Resolve contact_id from Convex
+                let contactId: string | undefined;
+                let hubspotContactId: string | undefined;
+                let convexMeetingId: string | undefined;
+                let meetingType: string | undefined;
+                try {
+                    const profileUrl = `https://opulent-bandicoot-376.convex.site/natively/meeting-profile?calendar_event_id=${encodeURIComponent(calendarEventId)}`;
+                    const profileResp = await fetch(profileUrl, { signal: AbortSignal.timeout(8000) });
+                    if (profileResp.ok) {
+                        const profile = await profileResp.json();
+                        if (profile?.meeting) {
+                            contactId = profile.meeting.contact_id;
+                            convexMeetingId = profile.meeting.id;
+                            meetingType = profile.meeting.meeting_type;
+                        }
+                        if (profile?.contact?.hubspot_contact_id) {
+                            hubspotContactId = profile.contact.hubspot_contact_id;
+                        }
+                    }
+                } catch (profileErr) {
+                    console.warn('[MeetingPersistence] meeting-profile lookup failed (non-fatal):', profileErr);
+                }
+
+                // 5. Build summary markdown
+                let summaryMarkdown: string | undefined;
+                if (summaryData) {
+                    const parts: string[] = [];
+                    if ((summaryData as any).overview) parts.push((summaryData as any).overview);
+                    if (summaryData.keyPoints?.length) {
+                        parts.push('## Key Points');
+                        summaryData.keyPoints.forEach((kp: string) => parts.push(`- ${kp}`));
+                    }
+                    if (summaryData.actionItems?.length) {
+                        parts.push('## Action Items');
+                        summaryData.actionItems.forEach((ai: string) => parts.push(`- ${ai}`));
+                    }
+                    if (parts.length > 0) summaryMarkdown = parts.join('\n');
+                }
+
+                // 6. POST to Convex
+                if (contactId) {
+                    const saveUrl = 'https://opulent-bandicoot-376.convex.site/natively/save-meeting';
+                    const payload = {
+                        calendar_event_id: calendarEventId,
+                        contact_id: contactId,
+                        hubspot_contact_id: hubspotContactId,
+                        meeting_id: convexMeetingId,
+                        transcript: fullTranscriptText,
+                        segments: labeledSegments,
+                        duration_seconds: Math.round(data.durationMs / 1000),
+                        meeting_type: meetingType,
+                        recorded_at: new Date().toISOString(),
+                        summary_markdown: summaryMarkdown,
+                        generator_model: 'natively-local',
+                    };
+                    const saveResp = await fetch(saveUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload),
+                        signal: AbortSignal.timeout(15000),
+                    });
+                    if (saveResp.ok) {
+                        console.log('[MeetingPersistence] Transcript + summary pushed to Convex');
+                    } else {
+                        console.warn('[MeetingPersistence] Convex save failed:', saveResp.status, await saveResp.text());
+                    }
+                } else {
+                    console.log('[MeetingPersistence] No contact_id — skipping Convex push');
+                }
+            } catch (convexErr) {
+                console.error('[MeetingPersistence] Convex write-through failed (non-fatal):', convexErr);
+            }
         }
     }
 
