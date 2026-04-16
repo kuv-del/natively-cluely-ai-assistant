@@ -180,7 +180,7 @@ const MeetingIndicator: React.FC<MeetingIndicatorProps> = ({ data }) => {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-const DealDetails: React.FC<DealDetailsProps> = ({ contactId, onBack, onOpenMeeting }) => {
+const DealDetails: React.FC<DealDetailsProps> = ({ contactId, onBack }) => {
     const isLight = useResolvedTheme() === 'light';
     const [data, setData] = useState<DealDetailsResponse | null>(null);
     const [loading, setLoading] = useState(true);
