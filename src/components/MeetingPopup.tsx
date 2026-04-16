@@ -52,7 +52,7 @@ const MeetingPopup: React.FC = () => {
                         {event.title}
                     </p>
                     <p className="text-[12px] text-gray-500 mt-0.5">
-                        Starts in 2 minutes
+                        {new Date(event.startTime).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} – {new Date(event.endTime).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
                     </p>
                 </div>
 
