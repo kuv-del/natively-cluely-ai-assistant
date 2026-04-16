@@ -344,15 +344,14 @@ const App: React.FC = () => {
       localStorage.setItem('natively_last_meeting_start', Date.now().toString());
       const inputDeviceId = localStorage.getItem('preferredInputDeviceId');
       let outputDeviceId = localStorage.getItem('preferredOutputDeviceId');
-      const useExperimentalSck = localStorage.getItem('useExperimentalSckBackend') === 'true';
-
-      // Override output device ID to force SCK if experimental mode is enabled
-      // Default to CoreAudio unless experimental is enabled
-      if (useExperimentalSck) {
-        console.log("[App] Using ScreenCaptureKit backend (Experimental).");
-        outputDeviceId = "sck";
+      // SCK (ScreenCaptureKit) is the default — CoreAudio Global Process Tap
+      // produces silence on macOS Tahoe 26.2. Only use CoreAudio if explicitly opted in.
+      const useCoreAudio = localStorage.getItem('useExperimentalSckBackend') === 'false';
+      if (useCoreAudio) {
+        console.log("[App] Using CoreAudio backend (opt-in).");
       } else {
-        console.log("[App] Using CoreAudio backend (Default).");
+        console.log("[App] Using ScreenCaptureKit backend (Default).");
+        outputDeviceId = "sck";
       }
 
       const metadata: any = {

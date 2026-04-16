@@ -1067,8 +1067,13 @@ export class AppState {
       let _rcfgSysChunkCount = 0;
       this.systemAudioCapture.on('data', (chunk: Buffer) => {
         _rcfgSysChunkCount++;
-        if (_rcfgSysChunkCount <= 3 || _rcfgSysChunkCount % 500 === 0) {
-          console.log(`[Main] (Reconfigured) SystemAudio->STT: chunk #${_rcfgSysChunkCount}, ${chunk.length}B, googleSTT=${this.googleSTT ? 'active' : 'NULL'}`);
+        // RMS diagnostic: check if system audio chunks contain signal or silence
+        if (_rcfgSysChunkCount <= 5 || _rcfgSysChunkCount % 200 === 0) {
+          let sumSq = 0;
+          const samples = new Int16Array(chunk.buffer, chunk.byteOffset, chunk.length / 2);
+          for (let i = 0; i < samples.length; i++) sumSq += samples[i] * samples[i];
+          const rms = Math.sqrt(sumSq / samples.length);
+          console.log(`[Main] (Reconfigured) SystemAudio->STT: chunk #${_rcfgSysChunkCount}, ${chunk.length}B, RMS=${rms.toFixed(1)}, googleSTT=${this.googleSTT ? 'active' : 'NULL'}`);
         }
         this.googleSTT?.write(chunk);
       });

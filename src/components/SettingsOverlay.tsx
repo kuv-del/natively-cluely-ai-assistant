@@ -843,7 +843,7 @@ const SettingsOverlay: React.FC<SettingsOverlayProps> = ({ isOpen, onClose, init
     const [selectedInput, setSelectedInput] = useState('');
     const [selectedOutput, setSelectedOutput] = useState('');
     const [micLevel, setMicLevel] = useState(0);
-    const [useExperimentalSck, setUseExperimentalSck] = useState(false);
+    const [useExperimentalSck, setUseExperimentalSck] = useState(true);
 
     // STT Provider settings
     const [sttProvider, setSttProvider] = useState<'none' | 'google' | 'groq' | 'openai' | 'deepgram' | 'elevenlabs' | 'azure' | 'ibmwatson' | 'soniox' | 'natively'>('none');
@@ -1227,8 +1227,9 @@ const SettingsOverlay: React.FC<SettingsOverlayProps> = ({ isOpen, onClose, init
             loadDevices();
 
             // Load Experimental SCK pref
-            const savedSck = localStorage.getItem('useExperimentalSckBackend') === 'true';
-            setUseExperimentalSck(savedSck);
+            // SCK is default (true) — only disable if explicitly set to 'false'
+            const savedSck = localStorage.getItem('useExperimentalSckBackend');
+            setUseExperimentalSck(savedSck !== 'false');
 
             // Load Calendar Status
             if (window.electronAPI?.getCalendarStatus) {
