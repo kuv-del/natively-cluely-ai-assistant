@@ -101,6 +101,7 @@ export class CalendarManager extends EventEmitter {
     private expiryDate: number | null = null;
     private isConnected: boolean = false;
     private updateInterval: NodeJS.Timeout | null = null;
+    private remindedEventIds: Set<string> = new Set();
 
     private constructor() {
         super();
@@ -371,31 +372,40 @@ export class CalendarManager extends EventEmitter {
     private reminderTimeouts: NodeJS.Timeout[] = [];
 
     private scheduleReminders(events: CalendarEvent[]) {
-        // Clear existing
+        // Clear existing timers
         this.reminderTimeouts.forEach(t => clearTimeout(t));
         this.reminderTimeouts = [];
 
         const now = Date.now();
 
         events.forEach(event => {
-            const startStr = event.startTime;
-            if (!startStr) return;
+            if (!event.startTime) return;
+            // Skip if already reminded for this event
+            if (this.remindedEventIds.has(event.id)) return;
 
-            const startTime = new Date(startStr).getTime();
-            // Reminder time: 2 minutes before
-            const reminderTime = startTime - (2 * 60 * 1000);
+            const startTime = new Date(event.startTime).getTime();
+            const reminderTime = startTime - (2 * 60 * 1000); // T-2 minutes
 
             if (reminderTime > now) {
                 const delay = reminderTime - now;
-                // Only schedule if within next 24h (which fetch already limits)
                 if (delay < 24 * 60 * 60 * 1000) {
                     const timeout = setTimeout(() => {
+                        this.remindedEventIds.add(event.id);
                         this.showNotification(event);
                     }, delay);
                     this.reminderTimeouts.push(timeout);
                 }
             }
         });
+
+        // Clean up old reminded IDs (events older than 1 hour ago)
+        const oneHourAgo = now - 60 * 60 * 1000;
+        for (const id of this.remindedEventIds) {
+            const evt = events.find(e => e.id === id);
+            if (evt && new Date(evt.startTime).getTime() < oneHourAgo) {
+                this.remindedEventIds.delete(id);
+            }
+        }
     }
 
     private showNotification(event: CalendarEvent) {
