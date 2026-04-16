@@ -534,9 +534,9 @@ const DealDetails: React.FC<DealDetailsProps> = ({ contactId, onBack }) => {
                                                                         ...prev,
                                                                         [txKey]: !isExpanded
                                                                     }))}
-                                                                    className={`text-[12px] font-medium transition-colors ${isExpanded ? 'text-text-tertiary hover:text-text-primary' : 'text-emerald-400 hover:text-emerald-300'}`}
+                                                                    className={`px-2.5 py-0.5 rounded-full text-[11px] font-medium border transition-colors ${isLight ? 'bg-bg-elevated text-text-secondary border-border-muted hover:bg-bg-item-active hover:text-text-primary' : 'bg-white/5 text-text-tertiary border-white/10 hover:bg-white/10 hover:text-text-primary'}`}
                                                                 >
-                                                                    {isExpanded ? '▾ Collapse transcript' : `▸ Transcript (${segments.length} lines)`}
+                                                                    {isExpanded ? 'Hide Transcript ▴' : 'Transcript →'}
                                                                 </button>
                                                                 {isExpanded && (
                                                                     <div className={`mt-2 rounded-lg border ${isLight ? 'bg-bg-elevated/50 border-border-muted' : 'bg-white/3 border-white/6'} p-3 space-y-2`}>
