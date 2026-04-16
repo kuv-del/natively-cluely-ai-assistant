@@ -92,6 +92,7 @@ Current `src/slack-triage-sync.ts` writes straight to Notion. Flip it so:
 | # | Item | Status |
 |---|------|--------|
 | 1.20 | **Auto-stop Natively when Zoom call ends** — detect when the Zoom meeting ends (process exits, audio stops, or Zoom window closes) and automatically stop the Natively recording session so Kate doesn't have to click End Meeting manually every time. | Priority |
+| 1.21 | **RSVP status + calendar color on meeting feed** — the calendar icon on each meeting row in the Launcher feed should reflect the prospect's RSVP status: green calendar if accepted, red alert triangle if declined, black/grey calendar if unconfirmed/needsAction/tentative. Also show the current Google Calendar color of the event (blueberry, lavender, tomato, etc.) as a small color dot or border. Data already available: `event.attendees[].responseStatus` and `event.colorId`/`colorHex` from CalendarManager. | Priority |
 
 | # | Item | Status |
 |---|---|---|
