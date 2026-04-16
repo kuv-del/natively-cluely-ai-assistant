@@ -518,12 +518,25 @@ const DealDetails: React.FC<DealDetailsProps> = ({ contactId, onBack, onOpenMeet
                                                     )}
 
                                                     {/* Expandable transcript */}
-                                                    {group.transcript && group.transcript.length > 0 && (() => {
+                                                    {group.transcript && (() => {
+                                                        // Transcript can be an array of segments or a plain string
+                                                        const rawTx = group.transcript!;
+                                                        const segments: Array<{speaker: string; text: string}> = Array.isArray(rawTx)
+                                                            ? rawTx
+                                                            : typeof rawTx === 'string' && rawTx.length > 0
+                                                                ? rawTx.split('\n').filter((l: string) => l.trim()).map((line: string) => {
+                                                                    const match = line.match(/^([^:]+):\s*(.+)/);
+                                                                    return match
+                                                                        ? { speaker: match[1].trim(), text: match[2].trim() }
+                                                                        : { speaker: 'Transcript', text: line.trim() };
+                                                                })
+                                                                : [];
+                                                        if (segments.length === 0) return null;
                                                         const PREVIEW_COUNT = 4;
                                                         const txKey = `${group._meetingType}-${idx}`;
                                                         const isExpanded = expandedTranscripts[txKey];
-                                                        const visibleSegments = isExpanded ? group.transcript! : group.transcript!.slice(0, PREVIEW_COUNT);
-                                                        const hasMore = group.transcript!.length > PREVIEW_COUNT;
+                                                        const visibleSegments = isExpanded ? segments : segments.slice(0, PREVIEW_COUNT);
+                                                        const hasMore = segments.length > PREVIEW_COUNT;
                                                         return (
                                                             <div className="mt-3">
                                                                 <div className={`rounded-lg border ${isLight ? 'bg-bg-elevated/50 border-border-muted' : 'bg-white/3 border-white/6'} p-3 space-y-2`}>
@@ -544,7 +557,7 @@ const DealDetails: React.FC<DealDetailsProps> = ({ contactId, onBack, onOpenMeet
                                                                         }))}
                                                                         className="mt-1.5 text-[11px] font-medium text-text-tertiary hover:text-text-primary transition-colors"
                                                                     >
-                                                                        {isExpanded ? 'Collapse transcript' : `Show full transcript (${group.transcript!.length} lines)`}
+                                                                        {isExpanded ? 'Collapse transcript' : `Show full transcript (${segments.length} lines)`}
                                                                     </button>
                                                                 )}
                                                             </div>
