@@ -1046,6 +1046,10 @@ export class AppState {
   }
 
   private async reconfigureAudio(inputDeviceId?: string, outputDeviceId?: string): Promise<void> {
+    // SCK is the default — CoreAudio Global Process Tap produces silence on macOS Tahoe 26.2
+    if (!outputDeviceId || outputDeviceId === 'default') {
+      outputDeviceId = 'sck';
+    }
     console.log(`[Main] Reconfiguring Audio: Input=${inputDeviceId}, Output=${outputDeviceId}`);
 
     // 1. System Audio (Output Capture)
@@ -2690,7 +2694,8 @@ async function initializeApp() {
       appState.startMeeting({
         title: event.title,
         calendarEventId: event.id,
-        source: 'calendar'
+        source: 'calendar',
+        audio: { inputDeviceId: null, outputDeviceId: 'sck' }
       });
     });
 

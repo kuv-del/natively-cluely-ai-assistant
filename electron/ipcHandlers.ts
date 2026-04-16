@@ -3099,13 +3099,14 @@ export function initializeIpcHandlers(appState: AppState): void {
         await shell.openExternal(eventData.link);
       }
       // 2. Start Natively meeting with calendar event linked
+      // SCK is the default backend — CoreAudio tap produces silence on macOS Tahoe 26.2
       await appState.startMeeting({
         title: eventData.title,
         calendarEventId: eventData.id,
         source: 'calendar' as const,
         audio: {
           inputDeviceId: null,
-          outputDeviceId: null
+          outputDeviceId: 'sck'
         }
       });
       // 3. Switch to overlay
