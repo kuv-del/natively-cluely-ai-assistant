@@ -60,7 +60,7 @@ const TAB_LABELS: Record<TabKey, string> = {
     summary: 'Summary',
     profile: 'Profile',
     grade: 'Grade',
-    past_meetings: 'Past Meetings',
+    past_meetings: 'Meetings',
     prep: 'Prep',
 };
 
@@ -185,6 +185,7 @@ const DealDetails: React.FC<DealDetailsProps> = ({ contactId, onBack, onOpenMeet
     const [data, setData] = useState<DealDetailsResponse | null>(null);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<TabKey>('summary');
+    const [expandedTranscripts, setExpandedTranscripts] = useState<Record<string, boolean>>({});
 
     const load = () => {
         window.electronAPI?.convexGetDealDetails?.(contactId)
@@ -515,6 +516,40 @@ const DealDetails: React.FC<DealDetailsProps> = ({ contactId, onBack, onOpenMeet
                                                     ) : (
                                                         <p className="text-[13px] text-text-tertiary italic pl-1">Summary generating…</p>
                                                     )}
+
+                                                    {/* Expandable transcript */}
+                                                    {group.transcript && group.transcript.length > 0 && (() => {
+                                                        const PREVIEW_COUNT = 4;
+                                                        const txKey = `${group._meetingType}-${idx}`;
+                                                        const isExpanded = expandedTranscripts[txKey];
+                                                        const visibleSegments = isExpanded ? group.transcript! : group.transcript!.slice(0, PREVIEW_COUNT);
+                                                        const hasMore = group.transcript!.length > PREVIEW_COUNT;
+                                                        return (
+                                                            <div className="mt-3">
+                                                                <div className={`rounded-lg border ${isLight ? 'bg-bg-elevated/50 border-border-muted' : 'bg-white/3 border-white/6'} p-3 space-y-2`}>
+                                                                    {visibleSegments.map((seg, si) => (
+                                                                        <div key={si} className="flex gap-2 text-[12px] leading-relaxed">
+                                                                            <span className={`shrink-0 font-medium ${seg.speaker === 'Kate Schnetzer' || seg.speaker === 'user' || seg.speaker === 'Me' ? 'text-blue-400' : 'text-emerald-400'}`}>
+                                                                                {seg.speaker === 'user' ? 'Me' : seg.speaker === 'interviewer' ? 'Them' : seg.speaker}:
+                                                                            </span>
+                                                                            <span className="text-text-secondary">{seg.text}</span>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                                {hasMore && (
+                                                                    <button
+                                                                        onClick={() => setExpandedTranscripts(prev => ({
+                                                                            ...prev,
+                                                                            [txKey]: !isExpanded
+                                                                        }))}
+                                                                        className="mt-1.5 text-[11px] font-medium text-text-tertiary hover:text-text-primary transition-colors"
+                                                                    >
+                                                                        {isExpanded ? 'Collapse transcript' : `Show full transcript (${group.transcript!.length} lines)`}
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    })()}
 
                                                     {/* Divider between entries */}
                                                     {idx < flatPastMeetings.length - 1 && (
