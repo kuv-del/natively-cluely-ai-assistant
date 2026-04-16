@@ -488,23 +488,13 @@ const DealDetails: React.FC<DealDetailsProps> = ({ contactId, onBack, onOpenMeet
                                             const meetingRef = group.meeting;
                                             return (
                                                 <div key={`${group._meetingType}-${idx}`} className="space-y-2">
-                                                    {/* Row: Open pill + heading */}
-                                                    <div className="flex items-start gap-3">
-                                                        {onOpenMeeting && meetingRef && (
-                                                            <button
-                                                                onClick={() => onOpenMeeting(meetingRef)}
-                                                                className={`shrink-0 mt-0.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium border transition-colors ${isLight ? 'bg-bg-elevated text-text-secondary border-border-muted hover:bg-bg-item-active hover:text-text-primary' : 'bg-white/5 text-text-tertiary border-white/10 hover:bg-white/10 hover:text-text-primary'}`}
-                                                            >
-                                                                Open →
-                                                            </button>
+                                                    {/* Meeting heading */}
+                                                    <h3 className="text-[14px] font-semibold text-text-primary leading-snug">
+                                                        {typeLabel}
+                                                        {dateStr && (
+                                                            <span className="font-normal text-text-tertiary ml-2 text-[13px]">on {dateStr}</span>
                                                         )}
-                                                        <h3 className="text-[14px] font-semibold text-text-primary leading-snug">
-                                                            {typeLabel}
-                                                            {dateStr && (
-                                                                <span className="font-normal text-text-tertiary ml-2 text-[13px]">on {dateStr}</span>
-                                                            )}
-                                                        </h3>
-                                                    </div>
+                                                    </h3>
 
                                                     {/* Summary content */}
                                                     {summary ? (
