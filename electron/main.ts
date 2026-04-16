@@ -807,6 +807,7 @@ export class AppState {
   private _audioTestStarting = false;               // P2-12: in-flight guard against concurrent calls
   private googleSTT: STTProvider | null = null; // Interviewer
   private googleSTT_User: STTProvider | null = null; // User
+  private echoCanceller: any = null; // AEC3 — subtracts speaker bleed from mic
 
   private createSTTProvider(speaker: 'interviewer' | 'user'): STTProvider | null {
     const { CredentialsManager } = require('./services/CredentialsManager');
@@ -1068,16 +1069,35 @@ export class AppState {
       console.log(`[Main] SystemAudioCapture rate: ${rate}Hz`);
       this.googleSTT?.setSampleRate(rate);
 
+      // Try to create AEC (echo canceller) — graceful fallback if binary doesn't have it
+      try {
+        const { loadNativeModule } = require('./audio/nativeModuleLoader');
+        const NativeModule = loadNativeModule();
+        if (NativeModule?.EchoCanceller) {
+          this.echoCanceller = new NativeModule.EchoCanceller(rate);
+          console.log('[Main] AEC (Echo Canceller) initialized');
+        } else {
+          console.log('[Main] EchoCanceller not available in native module — mic will have speaker bleed');
+          this.echoCanceller = null;
+        }
+      } catch (aecErr) {
+        console.warn('[Main] AEC init failed (non-fatal):', aecErr);
+        this.echoCanceller = null;
+      }
+
       let _rcfgSysChunkCount = 0;
       this.systemAudioCapture.on('data', (chunk: Buffer) => {
         _rcfgSysChunkCount++;
-        // RMS diagnostic: check if system audio chunks contain signal or silence
         if (_rcfgSysChunkCount <= 5 || _rcfgSysChunkCount % 200 === 0) {
           let sumSq = 0;
           const samples = new Int16Array(chunk.buffer, chunk.byteOffset, chunk.length / 2);
           for (let i = 0; i < samples.length; i++) sumSq += samples[i] * samples[i];
           const rms = Math.sqrt(sumSq / samples.length);
           console.log(`[Main] (Reconfigured) SystemAudio->STT: chunk #${_rcfgSysChunkCount}, ${chunk.length}B, RMS=${rms.toFixed(1)}, googleSTT=${this.googleSTT ? 'active' : 'NULL'}`);
+        }
+        // Feed system audio as AEC reference signal
+        if (this.echoCanceller) {
+          try { this.echoCanceller.feedReference(chunk); } catch {}
         }
         this.googleSTT?.write(chunk);
       });
@@ -1137,8 +1157,17 @@ export class AppState {
       this.googleSTT_User?.setSampleRate(rate);
 
       this.microphoneCapture.on('data', (chunk: Buffer) => {
-        // console.log('[Main] Mic chunk', chunk.length);
-        this.googleSTT_User?.write(chunk);
+        // Process mic through AEC to remove speaker bleed
+        if (this.echoCanceller) {
+          try {
+            const cleaned = this.echoCanceller.processCapture(chunk);
+            this.googleSTT_User?.write(cleaned);
+          } catch {
+            this.googleSTT_User?.write(chunk); // Fallback to raw
+          }
+        } else {
+          this.googleSTT_User?.write(chunk);
+        }
       });
       this.microphoneCapture.on('sample_rate_changed', (rate: number) => {
         console.log(`[Main] (Reconfigured) MicrophoneCapture rate updated dynamically to ${rate}Hz`);

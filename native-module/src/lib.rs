@@ -12,6 +12,7 @@ use napi::bindgen_prelude::*;
 use napi::threadsafe_function::{ThreadsafeFunction, ThreadsafeFunctionCallMode};
 use ringbuf::traits::Consumer;
 
+pub mod aec;
 pub mod audio_config;
 pub mod license;
 pub mod microphone;
@@ -448,5 +449,50 @@ pub fn get_output_devices() -> Vec<AudioDeviceInfo> {
             eprintln!("[get_output_devices] Error: {}", e);
             Vec::new()
         }
+    }
+}
+
+// ============================================================================
+// ECHO CANCELLER (AEC3) — subtracts speaker output from mic capture
+// ============================================================================
+
+#[napi]
+pub struct EchoCanceller {
+    processor: aec::AecProcessor,
+}
+
+#[napi]
+impl EchoCanceller {
+    #[napi(constructor)]
+    pub fn new(sample_rate: Option<u32>) -> Self {
+        let rate = sample_rate.unwrap_or(48000);
+        println!("[EchoCanceller] Created with sample rate: {}Hz", rate);
+        Self {
+            processor: aec::AecProcessor::new(rate),
+        }
+    }
+
+    /// Feed speaker/system audio as reference signal (i16 LE PCM bytes).
+    #[napi]
+    pub fn feed_reference(&self, buffer: Buffer) -> () {
+        let bytes = buffer.as_ref();
+        let samples: Vec<i16> = bytes
+            .chunks_exact(2)
+            .map(|c| i16::from_le_bytes([c[0], c[1]]))
+            .collect();
+        self.processor.feed_reference_i16(&samples);
+    }
+
+    /// Process mic capture chunk, removing echo. Returns cleaned i16 LE PCM bytes.
+    #[napi]
+    pub fn process_capture(&self, buffer: Buffer) -> Buffer {
+        let bytes = buffer.as_ref();
+        let samples: Vec<i16> = bytes
+            .chunks_exact(2)
+            .map(|c| i16::from_le_bytes([c[0], c[1]]))
+            .collect();
+        let cleaned = self.processor.process_capture_i16(&samples);
+        let out_bytes: Vec<u8> = cleaned.iter().flat_map(|&s| s.to_le_bytes()).collect();
+        Buffer::from(out_bytes)
     }
 }
