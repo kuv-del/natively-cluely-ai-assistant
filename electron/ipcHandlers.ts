@@ -3094,11 +3094,21 @@ export function initializeIpcHandlers(appState: AppState): void {
   safeHandle("meeting-popup:join", async (_, eventData: any) => {
     try {
       const { shell } = require('electron');
-      // 1. Open Zoom/meeting link
+
+      // 1. If a meeting is already active, end it first (saves transcript + summary)
+      if (appState.getIsMeetingActive()) {
+        console.log('[IPC] meeting-popup:join — ending current meeting before starting new one');
+        await appState.endMeeting();
+        // Brief pause to let audio pipeline tear down cleanly
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+
+      // 2. Open Zoom/meeting link
       if (eventData.link) {
         await shell.openExternal(eventData.link);
       }
-      // 2. Start Natively meeting with calendar event linked
+
+      // 3. Start new Natively meeting linked to the calendar event
       // SCK is the default backend — CoreAudio tap produces silence on macOS Tahoe 26.2
       await appState.startMeeting({
         title: eventData.title,
@@ -3109,7 +3119,8 @@ export function initializeIpcHandlers(appState: AppState): void {
           outputDeviceId: 'sck'
         }
       });
-      // 3. Switch to overlay
+
+      // 4. Switch to overlay
       appState.getWindowHelper().setWindowMode('overlay');
       return { success: true };
     } catch (error: any) {

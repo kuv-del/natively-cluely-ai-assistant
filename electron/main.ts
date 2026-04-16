@@ -2706,11 +2706,8 @@ async function initializeApp() {
     const meetingPopup = new MeetingPopupHelper();
 
     calMgr.on('meeting-reminder', (event: any) => {
-        // Don't show popup if already in a meeting
-        if (appState.getIsMeetingActive()) {
-            console.log('[Main] Skipping meeting reminder — already in a meeting');
-            return;
-        }
+        // Always show popup — even during active meetings. The Join button
+        // will end the current meeting before starting the new one.
         console.log('[Main] Meeting reminder popup for:', event.title);
         // Play macOS system sound
         if (process.platform === 'darwin') {
