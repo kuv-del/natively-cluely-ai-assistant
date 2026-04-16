@@ -80,7 +80,7 @@ function deriveKateStage(
     dealStage: string | undefined,
     offerMade: boolean | string | undefined,
     meetings: { discovery: any[]; demo: any[]; followup: any[]; sdr_triage?: any[] },
-    upcomingMeeting: any | null,
+    _upcomingMeeting?: any | null,
 ): KateStage {
     const hasDiscovery = meetings.discovery?.length > 0;
     const hasDemo = meetings.demo?.length > 0;
