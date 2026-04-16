@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Video, X, Clock } from 'lucide-react';
+import { Video, X } from 'lucide-react';
 
 interface PopupEvent {
     id: string;
@@ -24,18 +24,8 @@ const MeetingPopup: React.FC = () => {
     }, []);
 
     if (!event) {
-        return (
-            <div className="w-full h-full flex items-center justify-center bg-transparent">
-                <div className="bg-bg-primary/95 backdrop-blur-xl rounded-2xl p-6 border border-border-subtle shadow-2xl">
-                    <p className="text-text-secondary text-sm">Loading...</p>
-                </div>
-            </div>
-        );
+        return <div className="w-full h-full bg-transparent" />;
     }
-
-    const startTime = new Date(event.startTime);
-    const endTime = new Date(event.endTime);
-    const timeStr = `${startTime.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} – ${endTime.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
 
     const handleJoin = async () => {
         try {
@@ -52,59 +42,36 @@ const MeetingPopup: React.FC = () => {
     };
 
     return (
-        <div className="w-full h-full flex items-center justify-center bg-transparent select-none"
+        <div className="w-full h-full flex items-start justify-center bg-transparent select-none"
              style={{ WebkitAppRegion: 'drag' } as any}>
-            <div className="bg-bg-primary/95 backdrop-blur-xl rounded-2xl border border-border-subtle shadow-2xl w-full mx-3 overflow-hidden">
-                {/* Header */}
-                <div className="px-5 pt-4 pb-3 flex items-start justify-between">
-                    <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                        <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider">
-                            Starting in 2 min
-                        </span>
-                    </div>
-                    <button
-                        onClick={handleDismiss}
-                        className="text-text-tertiary hover:text-text-primary transition-colors -mt-0.5"
-                        style={{ WebkitAppRegion: 'no-drag' } as any}
-                    >
-                        <X size={14} />
-                    </button>
-                </div>
-
-                {/* Meeting info */}
-                <div className="px-5 pb-3">
-                    <h2 className="text-base font-bold text-text-primary leading-tight line-clamp-2 mb-1.5">
+            <div className="bg-white/95 backdrop-blur-xl rounded-2xl shadow-2xl w-full mx-2 mt-2 overflow-hidden flex items-center px-4 py-3 gap-4"
+                 style={{ boxShadow: '0 4px 24px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.05)' }}>
+                {/* Left: meeting info */}
+                <div className="flex-1 min-w-0">
+                    <p className="text-[14px] font-semibold text-gray-900 leading-tight truncate">
                         {event.title}
-                    </h2>
-                    <div className="flex items-center gap-2 text-text-secondary text-xs">
-                        <Clock size={12} />
-                        <span>{timeStr}</span>
-                        {event.attendeeCount > 0 && (
-                            <>
-                                <span className="opacity-30">·</span>
-                                <span>{event.attendeeCount} attendee{event.attendeeCount !== 1 ? 's' : ''}</span>
-                            </>
-                        )}
-                    </div>
+                    </p>
+                    <p className="text-[12px] text-gray-500 mt-0.5">
+                        Starts in 2 minutes
+                    </p>
                 </div>
 
-                {/* Actions */}
-                <div className="px-5 pb-4 pt-1 flex items-center gap-3">
+                {/* Right: Join button + X */}
+                <div className="flex items-center gap-2 shrink-0">
                     <button
                         onClick={handleJoin}
-                        className="flex-1 bg-emerald-500 hover:bg-emerald-400 text-white px-4 py-2.5 rounded-xl text-sm font-semibold transition-all shadow-lg hover:shadow-emerald-500/25 active:scale-[0.97] flex items-center justify-center gap-2"
+                        className="bg-blue-500 hover:bg-blue-600 text-white px-5 py-2 rounded-full text-sm font-semibold transition-all active:scale-[0.97] flex items-center gap-2"
                         style={{ WebkitAppRegion: 'no-drag' } as any}
                     >
                         <Video size={15} />
-                        Join Meeting
+                        Join Now
                     </button>
                     <button
                         onClick={handleDismiss}
-                        className="px-3 py-2.5 rounded-xl text-xs font-medium text-text-tertiary hover:text-text-primary transition-colors"
+                        className="w-8 h-8 rounded-full flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
                         style={{ WebkitAppRegion: 'no-drag' } as any}
                     >
-                        Dismiss
+                        <X size={16} />
                     </button>
                 </div>
             </div>

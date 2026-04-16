@@ -6,8 +6,8 @@ const startUrl = isDev
     ? "http://localhost:5180"
     : `file://${path.join(app.getAppPath(), "dist/index.html")}`
 
-const POPUP_WIDTH = 380
-const POPUP_HEIGHT = 200
+const POPUP_WIDTH = 520
+const POPUP_HEIGHT = 80
 
 export interface PopupMeetingEvent {
     id: string
@@ -49,10 +49,9 @@ export class MeetingPopupHelper {
     private createWindow(): void {
         const primary = screen.getPrimaryDisplay()
         const { x: dx, y: dy, width: dw } = primary.workArea
-        // Center horizontally, near the top
-        const marginTop = 20
+        // Center horizontally, flush to top
         const defaultX = dx + Math.round((dw - POPUP_WIDTH) / 2)
-        const defaultY = dy + marginTop
+        const defaultY = dy
 
         this.popupWindow = new BrowserWindow({
             width: POPUP_WIDTH,
