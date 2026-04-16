@@ -997,6 +997,15 @@ contextBridge.exposeInMainWorld("electronAPI", {
     };
   },
 
+  // Meeting Popup API
+  meetingPopupJoin: (eventData: any) => ipcRenderer.invoke("meeting-popup:join", eventData),
+  meetingPopupDismiss: () => ipcRenderer.invoke("meeting-popup:dismiss"),
+  onMeetingPopupEvent: (cb: (event: any) => void) => {
+      const handler = (_: any, event: any) => cb(event);
+      ipcRenderer.on("meeting-popup:event", handler);
+      return () => ipcRenderer.removeListener("meeting-popup:event", handler);
+  },
+
   // Auto-Update
   onUpdateAvailable: (callback: (info: any) => void) => {
     const subscription = (_: any, info: any) => callback(info)

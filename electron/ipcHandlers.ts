@@ -3043,5 +3043,36 @@ export function initializeIpcHandlers(appState: AppState): void {
       return false
     }
   })
+
+  // Meeting popup actions
+  safeHandle("meeting-popup:join", async (_, eventData: any) => {
+    try {
+      const { shell } = require('electron');
+      // 1. Open Zoom/meeting link
+      if (eventData.link) {
+        await shell.openExternal(eventData.link);
+      }
+      // 2. Start Natively meeting with calendar event linked
+      await appState.startMeeting({
+        title: eventData.title,
+        calendarEventId: eventData.id,
+        source: 'calendar' as const,
+        audio: {
+          inputDeviceId: null,
+          outputDeviceId: null
+        }
+      });
+      // 3. Switch to overlay
+      appState.getWindowHelper().setWindowMode('overlay');
+      return { success: true };
+    } catch (error: any) {
+      console.error("[IPC] meeting-popup:join error:", error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  safeHandle("meeting-popup:dismiss", async () => {
+    return { success: true };
+  });
 }
 

@@ -156,6 +156,7 @@ import { KeybindManager } from "./services/KeybindManager"
 import { ProcessingHelper } from "./ProcessingHelper"
 
 import { IntelligenceManager } from "./IntelligenceManager"
+import { MeetingPopupHelper } from "./MeetingPopupHelper"
 import { SystemAudioCapture } from "./audio/SystemAudioCapture"
 import { MicrophoneCapture } from "./audio/MicrophoneCapture"
 import { GoogleSTT } from "./audio/GoogleSTT"
@@ -2690,6 +2691,29 @@ async function initializeApp() {
 
     calMgr.on('open-requested', () => {
       appState.centerAndShowWindow();
+    });
+
+    const meetingPopup = new MeetingPopupHelper();
+
+    calMgr.on('meeting-reminder', (event: any) => {
+        // Don't show popup if already in a meeting
+        if (appState.getIsMeetingActive()) {
+            console.log('[Main] Skipping meeting reminder — already in a meeting');
+            return;
+        }
+        console.log('[Main] Meeting reminder popup for:', event.title);
+        // Play macOS system sound
+        if (process.platform === 'darwin') {
+            require('child_process').exec('afplay /System/Library/Sounds/Glass.aiff');
+        }
+        meetingPopup.show({
+            id: event.id,
+            title: event.title,
+            startTime: event.startTime,
+            endTime: event.endTime,
+            link: event.link,
+            attendeeCount: event.attendees?.length || 0
+        });
     });
 
     console.log('[Main] CalendarManager initialized');

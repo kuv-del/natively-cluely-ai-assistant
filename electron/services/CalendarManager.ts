@@ -399,32 +399,8 @@ export class CalendarManager extends EventEmitter {
     }
 
     private showNotification(event: CalendarEvent) {
-        const { Notification } = require('electron');
-        const notif = new Notification({
-            title: 'Meeting starting soon',
-            body: `"${event.title}" starts in 2 minutes. Start Natively?`,
-            actions: [
-                { type: 'button', text: 'Start Meeting' },
-                { type: 'button', text: 'Dismiss' }
-            ],
-            sound: true
-        });
-
-        notif.on('action', (event_unused: any, index: number) => {
-            if (index === 0) {
-                // Start Meeting
-                // We need to tell the main process to open window and start meeting
-                // Ideally we emit an event that AppState listens to
-                this.emit('start-meeting-requested', event);
-            }
-        });
-
-        notif.on('click', () => {
-            // Just open window
-            this.emit('open-requested');
-        });
-
-        notif.show();
+        console.log(`[CalendarManager] Meeting reminder: "${event.title}" in 2 minutes`);
+        this.emit('meeting-reminder', event);
     }
 
     // =========================================================================
