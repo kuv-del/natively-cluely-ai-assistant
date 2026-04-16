@@ -87,6 +87,12 @@ Current `src/slack-triage-sync.ts` writes straight to Notion. Flip it so:
 
 **Goal:** the daily sales workflow works end-to-end. Storage unified, prep + transcripts + summaries flow through Convex, Next Steps actions push to HubSpot.
 
+**TOP PRIORITY:**
+
+| # | Item | Status |
+|---|------|--------|
+| 1.20 | **Auto-stop Natively when Zoom call ends** — detect when the Zoom meeting ends (process exits, audio stops, or Zoom window closes) and automatically stop the Natively recording session so Kate doesn't have to click End Meeting manually every time. | Priority |
+
 | # | Item | Status |
 |---|---|---|
 | 1.1 | **Storage architecture** — Convex as source of truth for all Natively transcripts, preps, summaries, chats. Local SQLite stays as in-call cache. (DECISION LOCKED tonight — see section below.) | Next up |
