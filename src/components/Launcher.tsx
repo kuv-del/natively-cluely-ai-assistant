@@ -47,7 +47,7 @@ interface Meeting {
 }
 
 interface LauncherProps {
-    onStartMeeting: () => void;
+    onStartMeeting: (calendarEvent?: { id: string; title: string }) => void;
     onOpenSettings: (tab?: string) => void;
     onPageChange?: (isMain: boolean) => void;
     ollamaPullStatus?: 'idle' | 'downloading' | 'complete' | 'failed';
@@ -743,7 +743,7 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
                                                     window.electronAPI?.setWindowMode?.('overlay', true);
                                                     analytics.trackCommandExecuted('resume_meeting_from_launcher');
                                                 } else {
-                                                    onStartMeeting();
+                                                    onStartMeeting(nextMeeting ? { id: nextMeeting.id, title: nextMeeting.title } : undefined);
                                                     analytics.trackCommandExecuted('start_natively_cta');
                                                 }
                                             }}
@@ -891,7 +891,7 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
                                                             Prepare
                                                         </button>
                                                         <button
-                                                            onClick={onStartMeeting}
+                                                            onClick={() => onStartMeeting(nextMeeting ? { id: nextMeeting.id, title: nextMeeting.title } : undefined)}
                                                             className={`px-4 py-2 rounded-lg text-xs font-medium text-text-secondary hover:text-text-primary transition-all ${isLight ? 'hover:bg-bg-item-surface' : 'hover:bg-white/5'}`}
                                                         >
                                                             Start now

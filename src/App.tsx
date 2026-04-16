@@ -339,7 +339,7 @@ const App: React.FC = () => {
     }
   };
 
-  const handleStartMeeting = async () => {
+  const handleStartMeeting = async (calendarEvent?: { id: string; title: string }) => {
     try {
       localStorage.setItem('natively_last_meeting_start', Date.now().toString());
       const inputDeviceId = localStorage.getItem('preferredInputDeviceId');
@@ -355,9 +355,15 @@ const App: React.FC = () => {
         console.log("[App] Using CoreAudio backend (Default).");
       }
 
-      const result = await window.electronAPI.startMeeting({
+      const metadata: any = {
         audio: { inputDeviceId, outputDeviceId }
-      });
+      };
+      if (calendarEvent) {
+        metadata.title = calendarEvent.title;
+        metadata.calendarEventId = calendarEvent.id;
+        metadata.source = 'calendar';
+      }
+      const result = await window.electronAPI.startMeeting(metadata);
       if (result.success) {
         analytics.trackMeetingStarted();
         // Switch to Overlay Mode via IPC
