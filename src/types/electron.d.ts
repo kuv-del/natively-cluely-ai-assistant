@@ -291,6 +291,11 @@ export interface ElectronAPI {
   scriptHelperReadDossier: (eventId: string) => Promise<any | null>
   onScriptHelperDossierLoaded: (callback: (dossier: any | null) => void) => () => void
 
+  // Meeting Popup
+  meetingPopupJoin: (eventData: any) => Promise<{ success: boolean; error?: string }>
+  meetingPopupDismiss: () => Promise<{ success: boolean }>
+  onMeetingPopupEvent: (callback: (event: any) => void) => () => void
+
   // Auto-Update
   onUpdateAvailable: (callback: (info: any) => void) => () => void
   onUpdateDownloaded: (callback: (info: any) => void) => () => void
