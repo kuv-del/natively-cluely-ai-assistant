@@ -24,7 +24,12 @@ export interface DealDetailsCompany {
 export interface DealDetailsDeal {
     hubspot_deal_id?: string;
     deal_stage?: string;
+    offer_made?: boolean | string;
+    expected_close_date?: string;
+    close_date?: string;
+    status?: string;
     sdr_owner_name?: string;
+    sdr_owner?: string;
     sdr_email?: string;
     sdr_slack_id?: string;
 }

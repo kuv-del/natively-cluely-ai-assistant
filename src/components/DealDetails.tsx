@@ -66,6 +66,67 @@ const TAB_LABELS: Record<TabKey, string> = {
 
 const AVAILABLE_TABS: TabKey[] = ['summary', 'profile', 'grade', 'past_meetings', 'prep'];
 
+// ─── Kate's Deal Stage — derived from HubSpot deal stage + meeting data ──────
+
+type StageCategory = 'todo' | 'in_progress' | 'complete';
+
+interface KateStage {
+    label: string;
+    category: StageCategory;
+}
+
+// Map HubSpot internal deal_stage values → Kate's stage labels
+function deriveKateStage(
+    dealStage: string | undefined,
+    offerMade: boolean | string | undefined,
+    meetings: { discovery: any[]; demo: any[]; followup: any[]; sdr_triage?: any[] },
+    upcomingMeeting: any | null,
+): KateStage {
+    const hasDiscovery = meetings.discovery?.length > 0;
+    const hasDemo = meetings.demo?.length > 0;
+    const hasFollowup = meetings.followup?.length > 0;
+    const offer = offerMade === true || offerMade === 'Yes' || offerMade === 'true';
+
+    // Complete states
+    if (dealStage === '113267853') return { label: 'Closed/Won', category: 'complete' };
+    if (dealStage === '85094266') return { label: 'Closed/Lost', category: 'complete' };
+
+    // In-progress states (offer made)
+    if (offer) {
+        if (hasFollowup) return { label: 'Offer Made - FUP Scheduled', category: 'in_progress' };
+        return { label: 'Offer Made - No FUP Scheduled', category: 'in_progress' };
+    }
+
+    // To-do states
+    if (dealStage === '83755899' && hasDemo && !offer) return { label: 'No Offer but Qed - 2nd Demo', category: 'todo' };
+    if (hasDemo) return { label: 'Demo Scheduled', category: 'todo' };
+    if (hasDiscovery && !hasDemo) return { label: 'Discovery Scheduled', category: 'todo' };
+
+    // Default
+    if (dealStage) return { label: 'Demo Scheduled', category: 'todo' };
+    return { label: 'Discovery Scheduled', category: 'todo' };
+}
+
+function getStagePillStyle(stage: KateStage, isLight: boolean): string {
+    if (stage.label === 'Closed/Won') {
+        return 'bg-emerald-500 text-white border-emerald-600';
+    }
+    switch (stage.category) {
+        case 'todo':
+            return isLight
+                ? 'bg-gray-500 text-white border-gray-600'
+                : 'bg-gray-600 text-white border-gray-500';
+        case 'in_progress':
+            return isLight
+                ? 'bg-pink-400 text-white border-pink-500'
+                : 'bg-pink-500 text-white border-pink-400';
+        case 'complete':
+            return isLight
+                ? 'bg-gray-700 text-white border-gray-800'
+                : 'bg-gray-700 text-white border-gray-600';
+    }
+}
+
 // ─── Meeting type pretty labels ───────────────────────────────────────────────
 
 const MEETING_TYPE_PRETTY: Record<string, string> = {
@@ -86,27 +147,21 @@ function getMeetingTypeLabel(type: string | undefined | null): string {
 // Stages grouped by category:
 // new/triaged: decisionmakerboughtin, "83755899" (Growth Session Scheduled / Held)
 // active: "250536552" (Paid), "250536553" (Contract Sent)
-// signed/won: "113267853"
-// lost: "85094266"
-function getStagePillStyle(stage: string | undefined | null): string {
+// Old HubSpot stage pill style — kept for Profile tab
+function getHubspotStagePillStyle(stage: string | undefined | null): string {
     if (!stage) return 'bg-gray-500/10 text-gray-400 border-gray-500/20';
     switch (stage) {
         case 'decisionmakerboughtin':
         case '83755899':
-            // new/triaged — orange
             return 'bg-orange-500/10 text-orange-400 border-orange-500/30';
         case '250536552':
         case '250536553':
-            // active/working — blue
             return 'bg-blue-500/10 text-blue-400 border-blue-500/30';
         case '113267853':
-            // signed/won — green
             return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30';
         case '85094266':
-            // lost — red
             return 'bg-red-500/10 text-red-400 border-red-500/30';
         default:
-            // unknown
             return 'bg-gray-500/10 text-gray-400 border-gray-500/20';
     }
 }
@@ -271,20 +326,50 @@ const DealDetails: React.FC<DealDetailsProps> = ({ contactId, onBack }) => {
                                 )}
                             </h1>
 
-                            {/* Header meta row: stage pill + meeting indicator */}
-                            {!loading && (
-                                <div className="flex items-center gap-3 flex-wrap">
-                                    {/* Stage pill */}
-                                    <span
-                                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-medium border ${getStagePillStyle(deal?.deal_stage)}`}
-                                    >
-                                        {deal?.deal_stage ? getDealStageLabel(deal.deal_stage) : 'No deal stage'}
-                                    </span>
+                            {/* Header meta row: Kate's deal stage + dates */}
+                            {!loading && data && (() => {
+                                const kateStage = deriveKateStage(
+                                    deal?.deal_stage,
+                                    deal?.offer_made,
+                                    data.meetings_by_type || { discovery: [], demo: [], followup: [], sdr_triage: [] },
+                                    data.upcoming_meeting
+                                );
+                                // Find demo date from first demo meeting
+                                const demoMeeting = (data.meetings_by_type?.demo ?? [])[0]?.meeting;
+                                const demoDate = demoMeeting?.start_time;
+                                // Expected close date from deal
+                                const expectedClose = (deal as any)?.expected_close_date;
+                                // Next meeting from upcoming
+                                const nextMeeting = data.upcoming_meeting?.meeting;
+                                const nextMeetingDate = nextMeeting?.start_time;
 
-                                    {/* Next/last meeting indicator */}
-                                    {data && <MeetingIndicator data={data} />}
-                                </div>
-                            )}
+                                const formatDate = (iso: string | undefined) => {
+                                    if (!iso) return '—';
+                                    const d = new Date(iso);
+                                    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                                };
+                                const formatDateTime = (iso: string | undefined) => {
+                                    if (!iso) return '—';
+                                    const d = new Date(iso);
+                                    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+                                        + ' ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+                                };
+
+                                return (
+                                    <div className="flex items-center gap-3 flex-wrap">
+                                        {/* Kate's stage pill */}
+                                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-medium border ${getStagePillStyle(kateStage, isLight)}`}>
+                                            {kateStage.label}
+                                        </span>
+                                        {/* Dates row */}
+                                        <div className="flex items-center gap-4 text-[11px] text-text-tertiary">
+                                            {demoDate && <span>Demo: <span className="text-text-secondary">{formatDateTime(demoDate)}</span></span>}
+                                            {expectedClose && <span>Close: <span className="text-text-secondary">{formatDate(expectedClose)}</span></span>}
+                                            {nextMeetingDate && <span>Next: <span className="text-text-secondary">{formatDateTime(nextMeetingDate)}</span></span>}
+                                        </div>
+                                    </div>
+                                );
+                            })()}
                         </div>
                     </div>
 
