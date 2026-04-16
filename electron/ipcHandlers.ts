@@ -2062,6 +2062,7 @@ export function initializeIpcHandlers(appState: AppState): void {
   safeHandle("get-recent-meetings", async () => {
     // Fetch from SQLite (Natively-recorded meetings)
     const localMeetings = DatabaseManager.getInstance().getRecentMeetings(50);
+    console.log(`[IPC] get-recent-meetings: ${localMeetings.length} local meetings`);
 
     // Fetch from Convex (all meetings with transcripts — Zoom, Gong, Natively)
     let convexMeetings: any[] = [];
@@ -2089,6 +2090,8 @@ export function initializeIpcHandlers(appState: AppState): void {
       console.warn('[IPC] Convex feed fetch failed (non-fatal):', err);
     }
 
+    console.log(`[IPC] get-recent-meetings: ${convexMeetings.length} Convex meetings`);
+
     // Merge: local first, then Convex meetings not already in local (dedup by calendarEventId + id)
     const localCalIds = new Set(localMeetings.map((m: any) => m.calendarEventId).filter(Boolean));
     const localIds = new Set(localMeetings.map((m: any) => m.id));
@@ -2100,6 +2103,7 @@ export function initializeIpcHandlers(appState: AppState): void {
       ),
     ];
 
+    console.log(`[IPC] get-recent-meetings: returning ${merged.length} total (${localMeetings.length} local + ${merged.length - localMeetings.length} convex)`);
     return merged;
   });
 
