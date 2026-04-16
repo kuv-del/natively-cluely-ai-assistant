@@ -378,14 +378,24 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
         console.log("[Launcher] Opening meeting:", meeting.id);
         analytics.trackCommandExecuted('open_meeting_details');
 
-        // Fetch full meeting details including transcript and usage
-        if (window.electronAPI && window.electronAPI.getMeetingDetails) {
+        // Try to resolve contact from calendar event → open DealDetails if found
+        if (meeting.calendarEventId && window.electronAPI?.convexGetMeetingProfile) {
             try {
-                console.log("[Launcher] Fetching full meeting details...");
+                const profile = await window.electronAPI.convexGetMeetingProfile(meeting.calendarEventId);
+                if (profile?.meeting?.contact_id) {
+                    console.log("[Launcher] Meeting has contact — opening DealDetails");
+                    setSelectedDealContactId(profile.meeting.contact_id);
+                    return;
+                }
+            } catch (err) {
+                console.warn("[Launcher] convexGetMeetingProfile failed, falling back to MeetingDetails:", err);
+            }
+        }
+
+        // Fallback: no contact linked → open MeetingDetails
+        if (window.electronAPI?.getMeetingDetails) {
+            try {
                 const fullMeeting = await window.electronAPI.getMeetingDetails(meeting.id);
-                console.log("[Launcher] Got meeting details:", fullMeeting);
-                console.log("[Launcher] Transcript count:", fullMeeting?.transcript?.length);
-                console.log("[Launcher] Usage count:", fullMeeting?.usage?.length);
                 if (fullMeeting) {
                     setSelectedMeeting(fullMeeting);
                     return;
@@ -393,10 +403,7 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
             } catch (err) {
                 console.error("[Launcher] Failed to fetch meeting details:", err);
             }
-        } else {
-            console.warn("[Launcher] getMeetingDetails not available on electronAPI");
         }
-        // Fallback to list-view data if fetch fails
         setSelectedMeeting(meeting);
     };
 
