@@ -539,26 +539,26 @@ const DealDetails: React.FC<DealDetailsProps> = ({ contactId, onBack, onOpenMeet
                                                         const hasMore = segments.length > PREVIEW_COUNT;
                                                         return (
                                                             <div className="mt-3">
-                                                                <div className={`rounded-lg border ${isLight ? 'bg-bg-elevated/50 border-border-muted' : 'bg-white/3 border-white/6'} p-3 space-y-2`}>
-                                                                    {visibleSegments.map((seg, si) => (
-                                                                        <div key={si} className="flex gap-2 text-[12px] leading-relaxed">
-                                                                            <span className={`shrink-0 font-medium ${seg.speaker === 'Kate Schnetzer' || seg.speaker === 'user' || seg.speaker === 'Me' ? 'text-blue-400' : 'text-emerald-400'}`}>
-                                                                                {seg.speaker === 'user' ? 'Me' : seg.speaker === 'interviewer' ? 'Them' : seg.speaker}:
-                                                                            </span>
-                                                                            <span className="text-text-secondary">{seg.text}</span>
-                                                                        </div>
-                                                                    ))}
-                                                                </div>
-                                                                {hasMore && (
-                                                                    <button
-                                                                        onClick={() => setExpandedTranscripts(prev => ({
-                                                                            ...prev,
-                                                                            [txKey]: !isExpanded
-                                                                        }))}
-                                                                        className="mt-1.5 text-[11px] font-medium text-text-tertiary hover:text-text-primary transition-colors"
-                                                                    >
-                                                                        {isExpanded ? 'Collapse transcript' : `Show full transcript (${segments.length} lines)`}
-                                                                    </button>
+                                                                <button
+                                                                    onClick={() => setExpandedTranscripts(prev => ({
+                                                                        ...prev,
+                                                                        [txKey]: !isExpanded
+                                                                    }))}
+                                                                    className={`text-[12px] font-medium transition-colors ${isExpanded ? 'text-text-tertiary hover:text-text-primary' : 'text-emerald-400 hover:text-emerald-300'}`}
+                                                                >
+                                                                    {isExpanded ? '▾ Collapse transcript' : `▸ Transcript (${segments.length} lines)`}
+                                                                </button>
+                                                                {isExpanded && (
+                                                                    <div className={`mt-2 rounded-lg border ${isLight ? 'bg-bg-elevated/50 border-border-muted' : 'bg-white/3 border-white/6'} p-3 space-y-2`}>
+                                                                        {segments.map((seg, si) => (
+                                                                            <div key={si} className="flex gap-2 text-[12px] leading-relaxed">
+                                                                                <span className={`shrink-0 font-medium ${seg.speaker === 'Kate Schnetzer' || seg.speaker === 'user' || seg.speaker === 'Me' ? 'text-blue-400' : 'text-emerald-400'}`}>
+                                                                                    {seg.speaker === 'user' ? 'Me' : seg.speaker === 'interviewer' ? 'Them' : seg.speaker}:
+                                                                                </span>
+                                                                                <span className="text-text-secondary">{seg.text}</span>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
                                                                 )}
                                                             </div>
                                                         );
