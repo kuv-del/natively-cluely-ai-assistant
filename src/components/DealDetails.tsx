@@ -519,8 +519,8 @@ const DealDetails: React.FC<DealDetailsProps> = ({ contactId, onBack, onOpenMeet
 
                                                     {/* Expandable transcript */}
                                                     {group.transcript && (() => {
-                                                        // Transcript can be an array of segments or a plain string
-                                                        const rawTx = group.transcript!;
+                                                        // Transcript can be an array of segments or a plain string (Zoom/Gong)
+                                                        const rawTx: any = group.transcript;
                                                         const segments: Array<{speaker: string; text: string}> = Array.isArray(rawTx)
                                                             ? rawTx
                                                             : typeof rawTx === 'string' && rawTx.length > 0
