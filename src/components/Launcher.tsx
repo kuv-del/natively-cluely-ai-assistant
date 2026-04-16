@@ -110,10 +110,55 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
     const [isGlobalChatOpen, setIsGlobalChatOpen] = useState(false);
     const [submittedGlobalQuery, setSubmittedGlobalQuery] = useState('');
 
-    const fetchMeetings = () => {
-        if (window.electronAPI && window.electronAPI.getRecentMeetings) {
-            window.electronAPI.getRecentMeetings().then(setMeetings).catch(err => console.error("Failed to fetch meetings:", err));
+    const fetchMeetings = async () => {
+        // Fetch from local SQLite (Natively-recorded meetings)
+        let localMeetings: Meeting[] = [];
+        if (window.electronAPI?.getRecentMeetings) {
+            try {
+                localMeetings = await window.electronAPI.getRecentMeetings();
+            } catch (err) {
+                console.error("Failed to fetch local meetings:", err);
+            }
         }
+
+        // Fetch from Convex (all meetings with transcripts — Zoom, Gong, Natively)
+        let convexMeetings: Meeting[] = [];
+        try {
+            const resp = await fetch('https://opulent-bandicoot-376.convex.site/natively/feed?limit=50&days=60');
+            if (resp.ok) {
+                const data = await resp.json();
+                convexMeetings = (data as any[]).map((m: any) => ({
+                    id: m.id,
+                    title: m.contactName ? `${m.title}` : m.title,
+                    date: m.date,
+                    duration: m.duration || '0:00',
+                    summary: '',
+                    calendarEventId: m.calendarEventId,
+                    source: m.source || 'convex',
+                    // Extra fields for display
+                    contactName: m.contactName,
+                    companyName: m.companyName,
+                    meetingType: m.meetingType,
+                    contactId: m.contactId,
+                } as any));
+            }
+        } catch (err) {
+            console.warn("Failed to fetch Convex feed:", err);
+        }
+
+        // Merge: SQLite meetings first, then Convex meetings not already in SQLite
+        // Dedup by calendarEventId
+        const localCalIds = new Set(localMeetings.map((m: any) => m.calendarEventId).filter(Boolean));
+        const localIds = new Set(localMeetings.map(m => m.id));
+        const merged = [
+            ...localMeetings,
+            ...convexMeetings.filter((m: any) =>
+                !localIds.has(m.id) &&
+                (!m.calendarEventId || !localCalIds.has(m.calendarEventId))
+            ),
+        ];
+
+        setMeetings(merged);
     };
 
     const fetchEvents = () => {
@@ -377,6 +422,13 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
         setForwardMeeting(null); // Clear forward history on new navigation
         console.log("[Launcher] Opening meeting:", meeting.id);
         analytics.trackCommandExecuted('open_meeting_details');
+
+        // If the meeting came from Convex feed, it already has contactId
+        if ((meeting as any).contactId) {
+            console.log("[Launcher] Convex meeting with contactId — opening DealDetails");
+            setSelectedDealContactId((meeting as any).contactId);
+            return;
+        }
 
         // Try to resolve contact from calendar event → open DealDetails if found
         if (meeting.calendarEventId && window.electronAPI?.convexGetMeetingProfile) {
