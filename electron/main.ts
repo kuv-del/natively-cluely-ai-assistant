@@ -2728,6 +2728,79 @@ async function initializeApp() {
     console.error('[Main] Failed to initialize CalendarManager:', e);
   }
 
+  // ── Zoom Auto-Detect ────────────────────────────────────────────────────
+  // Polls for Zoom's CptHost subprocess to auto-start/stop Natively sessions.
+  try {
+    const { ZoomDetector } = require('./ZoomDetector');
+    const zoomDetector = new ZoomDetector();
+
+    zoomDetector.on('call-started', async () => {
+      // Don't start if already in a meeting (e.g., manually started)
+      if (appState.getIsMeetingActive()) {
+        console.log('[Main] Zoom call detected but Natively meeting already active — skipping auto-start');
+        return;
+      }
+
+      console.log('[Main] Zoom call detected — finding matching calendar event...');
+
+      // Find the calendar event that's happening right now (within ±10 min window)
+      try {
+        const { CalendarManager } = require('./services/CalendarManager');
+        const calMgr = CalendarManager.getInstance();
+        const events = await calMgr.getUpcomingEvents(true);
+        const now = Date.now();
+        const WINDOW_MS = 10 * 60 * 1000; // ±10 minutes
+
+        const matchingEvent = events.find((e: any) => {
+          if (!e.startTime || !e.link) return false;
+          const startMs = new Date(e.startTime).getTime();
+          return Math.abs(startMs - now) < WINDOW_MS;
+        });
+
+        if (matchingEvent) {
+          console.log(`[Main] Zoom auto-start: matched to "${matchingEvent.title}" (${matchingEvent.id})`);
+          await appState.startMeeting({
+            title: matchingEvent.title,
+            calendarEventId: matchingEvent.id,
+            source: 'calendar',
+            audio: { inputDeviceId: null, outputDeviceId: 'sck' }
+          });
+          appState.getWindowHelper().setWindowMode('overlay');
+        } else {
+          // No matching calendar event — start as manual/unlinked meeting
+          console.log('[Main] Zoom auto-start: no matching calendar event — starting unlinked session');
+          await appState.startMeeting({
+            source: 'manual',
+            audio: { inputDeviceId: null, outputDeviceId: 'sck' }
+          });
+          appState.getWindowHelper().setWindowMode('overlay');
+        }
+      } catch (err) {
+        console.error('[Main] Zoom auto-start failed:', err);
+      }
+    });
+
+    zoomDetector.on('call-ended', async () => {
+      if (!appState.getIsMeetingActive()) {
+        console.log('[Main] Zoom call ended but no Natively meeting active — nothing to stop');
+        return;
+      }
+
+      console.log('[Main] Zoom call ended — auto-stopping Natively session');
+      try {
+        await appState.endMeeting();
+        appState.getWindowHelper().setWindowMode('launcher');
+      } catch (err) {
+        console.error('[Main] Zoom auto-stop failed:', err);
+      }
+    });
+
+    zoomDetector.start();
+    console.log('[Main] ZoomDetector initialized');
+  } catch (e) {
+    console.error('[Main] Failed to initialize ZoomDetector:', e);
+  }
+
   // Recover unprocessed meetings (persistence check)
   appState.getIntelligenceManager().recoverUnprocessedMeetings().catch(err => {
     console.error('[Main] Failed to recover unprocessed meetings:', err);
