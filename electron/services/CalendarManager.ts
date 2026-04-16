@@ -130,6 +130,32 @@ export class CalendarManager extends EventEmitter {
                 console.error('[CalendarManager] Bootstrap token refresh failed:', err);
             });
         }
+
+        // ── Main-process calendar polling ───────────────────────────────────
+        // Ensures reminders fire even when the Launcher component isn't mounted
+        // (overlay mode, minimized, etc.). The renderer still polls too — that's
+        // fine, getUpcomingEvents() is idempotent and re-schedules reminders.
+
+        // Initial fetch after a short delay (let token refresh settle)
+        setTimeout(() => {
+            if (this.isConnected) {
+                console.log('[CalendarManager] Initial main-process fetch (5s after init)');
+                this.getUpcomingEvents(true).catch(err => {
+                    console.error('[CalendarManager] Initial fetch failed:', err);
+                });
+            }
+        }, 5000);
+
+        // Recurring 60-second poll
+        if (this.updateInterval) clearInterval(this.updateInterval);
+        this.updateInterval = setInterval(() => {
+            if (this.isConnected) {
+                console.log('[CalendarManager] Polling calendar (60s interval)');
+                this.getUpcomingEvents(true).catch(err => {
+                    console.error('[CalendarManager] Poll fetch failed:', err);
+                });
+            }
+        }, 60_000);
     }
 
     // =========================================================================
