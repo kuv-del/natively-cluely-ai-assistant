@@ -2060,8 +2060,47 @@ export function initializeIpcHandlers(appState: AppState): void {
   });
 
   safeHandle("get-recent-meetings", async () => {
-    // Fetch from SQLite (limit 50)
-    return DatabaseManager.getInstance().getRecentMeetings(50);
+    // Fetch from SQLite (Natively-recorded meetings)
+    const localMeetings = DatabaseManager.getInstance().getRecentMeetings(50);
+
+    // Fetch from Convex (all meetings with transcripts — Zoom, Gong, Natively)
+    let convexMeetings: any[] = [];
+    try {
+      const resp = await fetch('https://opulent-bandicoot-376.convex.site/natively/feed?limit=50&days=60', {
+        signal: AbortSignal.timeout(8000),
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        convexMeetings = (data as any[]).map((m: any) => ({
+          id: m.id,
+          title: m.title,
+          date: m.date,
+          duration: m.duration || '0:00',
+          summary: '',
+          calendarEventId: m.calendarEventId,
+          source: m.source || 'convex',
+          contactName: m.contactName,
+          companyName: m.companyName,
+          meetingType: m.meetingType,
+          contactId: m.contactId,
+        }));
+      }
+    } catch (err) {
+      console.warn('[IPC] Convex feed fetch failed (non-fatal):', err);
+    }
+
+    // Merge: local first, then Convex meetings not already in local (dedup by calendarEventId + id)
+    const localCalIds = new Set(localMeetings.map((m: any) => m.calendarEventId).filter(Boolean));
+    const localIds = new Set(localMeetings.map((m: any) => m.id));
+    const merged = [
+      ...localMeetings,
+      ...convexMeetings.filter((m: any) =>
+        !localIds.has(m.id) &&
+        (!m.calendarEventId || !localCalIds.has(m.calendarEventId))
+      ),
+    ];
+
+    return merged;
   });
 
   safeHandle("get-meeting-details", async (event, id) => {
