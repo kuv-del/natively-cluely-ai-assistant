@@ -576,6 +576,7 @@ if (!nativeBinding) {
 }
 
 module.exports = nativeBinding
+module.exports.EchoCanceller = nativeBinding.EchoCanceller
 module.exports.MicrophoneCapture = nativeBinding.MicrophoneCapture
 module.exports.SystemAudioCapture = nativeBinding.SystemAudioCapture
 module.exports.deactivateDodoKey = nativeBinding.deactivateDodoKey
