@@ -39,6 +39,7 @@ export interface DealDetailsMeetingRef {
     calendar_event_id?: string;
     title?: string;
     meeting_type?: string;
+    hs_activity_type?: string;
     start_time?: string;
     end_time?: string;
     zoom_link?: string;

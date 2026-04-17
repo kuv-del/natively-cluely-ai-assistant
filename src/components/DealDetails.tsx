@@ -492,10 +492,14 @@ const DealDetails: React.FC<DealDetailsProps> = ({ contactId, onBack }) => {
                                                 <div className="space-y-2">
                                                     <ProfileRow
                                                         label="SDR Owner"
-                                                        value={deal?.sdr_owner_name}
+                                                        value={(deal as any)?.sdr_owner || deal?.sdr_owner_name}
                                                         href={deal?.sdr_slack_id ? slackDmUrl(deal.sdr_slack_id) : undefined}
                                                     />
                                                     <ProfileRow label="Deal Stage" value={getDealStageLabel(deal?.deal_stage)} />
+                                                    <ProfileRow label="Demo Outcome" value={(deal as any)?.decision_call_outcome || 'None Selected'} />
+                                                    <ProfileRow label="Offer Made" value={deal?.offer_made === true ? 'Yes' : deal?.offer_made === false ? 'No' : 'None Selected'} />
+                                                    <ProfileRow label="Expected Close Date" value={deal?.expected_close_date || 'None Selected'} />
+                                                    <ProfileRow label="Next Steps" value={(deal as any)?.next_steps || 'None Selected'} />
                                                 </div>
                                             </div>
                                         ) : (
@@ -574,12 +578,21 @@ const DealDetails: React.FC<DealDetailsProps> = ({ contactId, onBack }) => {
                                             return (
                                                 <div key={`${group._meetingType}-${idx}`} className="space-y-2">
                                                     {/* Meeting heading */}
-                                                    <h3 className="text-[14px] font-semibold text-text-primary leading-snug">
-                                                        {typeLabel}
-                                                        {dateStr && (
-                                                            <span className="font-normal text-text-tertiary ml-2 text-[13px]">on {dateStr}</span>
-                                                        )}
-                                                    </h3>
+                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                        <h3 className="text-[14px] font-semibold text-text-primary leading-snug">
+                                                            {typeLabel}
+                                                            {dateStr && (
+                                                                <span className="font-normal text-text-tertiary ml-2 text-[13px]">on {dateStr}</span>
+                                                            )}
+                                                        </h3>
+                                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${
+                                                            meetingRef?.hs_activity_type
+                                                                ? isLight ? 'bg-blue-50 text-blue-600 border border-blue-200' : 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
+                                                                : isLight ? 'bg-gray-100 text-gray-500 border border-gray-200' : 'bg-white/5 text-text-tertiary border border-white/10'
+                                                        }`}>
+                                                            {meetingRef?.hs_activity_type || 'None Selected'}
+                                                        </span>
+                                                    </div>
 
                                                     {/* Summary content */}
                                                     {summary ? (
