@@ -21,6 +21,14 @@ interface ReferenceFile {
     createdAt: string;
 }
 
+interface NoteSection {
+    id: string;
+    modeId: string;
+    title: string;
+    description: string;
+    sortOrder: number;
+}
+
 interface Props {
     onClose: () => void;
     isPremium: boolean;
@@ -46,6 +54,9 @@ const ModesSettings: React.FC<Props> = ({ onClose }) => {
     const [modes, setModes] = useState<Mode[]>([]);
     const [selected, setSelected] = useState<Mode | null>(null);
     const [refFiles, setRefFiles] = useState<ReferenceFile[]>([]);
+    const [noteSections, setNoteSections] = useState<NoteSection[]>([]);
+    const [newSectionTitle, setNewSectionTitle] = useState('');
+    const [newSectionDesc, setNewSectionDesc] = useState('');
     const [creating, setCreating] = useState(false);
     const [newName, setNewName] = useState('');
     const [newTemplate, setNewTemplate] = useState<TemplateType>('sales');
@@ -65,9 +76,32 @@ const ModesSettings: React.FC<Props> = ({ onClose }) => {
     useEffect(() => { reload(); }, []);
 
     useEffect(() => {
-        if (!selected) { setRefFiles([]); return; }
+        if (!selected) { setRefFiles([]); setNoteSections([]); return; }
         api.modesGetReferenceFiles(selected.id).then(setRefFiles);
+        api.modesGetNoteSections(selected.id).then(setNoteSections);
     }, [selected?.id]);
+
+    const reloadSections = async () => {
+        if (!selected) return;
+        setNoteSections(await api.modesGetNoteSections(selected.id));
+    };
+
+    const addSection = async () => {
+        if (!selected || !newSectionTitle.trim()) return;
+        await api.modesAddNoteSection(selected.id, newSectionTitle.trim(), newSectionDesc.trim());
+        setNewSectionTitle(''); setNewSectionDesc('');
+        await reloadSections();
+    };
+
+    const updateSection = async (id: string, updates: { title?: string; description?: string }) => {
+        await api.modesUpdateNoteSection(id, updates);
+        await reloadSections();
+    };
+
+    const deleteSection = async (id: string) => {
+        await api.modesDeleteNoteSection(id);
+        await reloadSections();
+    };
 
     const activate = async (id: string | null) => {
         await api.modesSetActive(id);
@@ -274,6 +308,55 @@ const ModesSettings: React.FC<Props> = ({ onClose }) => {
                                             ))}
                                         </div>
                                     )}
+                                </div>
+
+                                <div>
+                                    <div className="text-[12px] font-medium text-white/80 mb-2">Note Sections</div>
+                                    <div className="text-[11px] text-white/50 mb-3">
+                                        Structure how this mode's post-meeting notes are generated. Each section becomes a heading in the final summary. Example for Scalable Sales: "Prospect's pain", "Budget signal", "Objections", "Next step committed".
+                                    </div>
+                                    {noteSections.length > 0 && (
+                                        <div className="space-y-2 mb-3">
+                                            {noteSections.map(s => (
+                                                <div key={s.id} className="p-2.5 bg-white/5 border border-white/10 rounded space-y-1.5">
+                                                    <div className="flex items-center gap-2">
+                                                        <input
+                                                            defaultValue={s.title}
+                                                            onBlur={e => e.target.value !== s.title && updateSection(s.id, { title: e.target.value })}
+                                                            className="flex-1 px-2 py-1 text-[12px] font-medium bg-black/30 border border-white/10 rounded text-white outline-none focus:border-white/30" />
+                                                        <button onClick={() => deleteSection(s.id)} className="p-1 text-white/40 hover:text-red-400">
+                                                            <Trash2 size={12} />
+                                                        </button>
+                                                    </div>
+                                                    <textarea
+                                                        defaultValue={s.description}
+                                                        onBlur={e => e.target.value !== s.description && updateSection(s.id, { description: e.target.value })}
+                                                        placeholder="What should go in this section (guidance for the AI)…"
+                                                        rows={2}
+                                                        className="w-full px-2 py-1 text-[11px] bg-black/30 border border-white/10 rounded text-white/90 placeholder-white/30 outline-none focus:border-white/30" />
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                    <div className="p-2.5 bg-white/5 border border-white/10 rounded space-y-1.5">
+                                        <input
+                                            value={newSectionTitle}
+                                            onChange={e => setNewSectionTitle(e.target.value)}
+                                            placeholder="New section title (e.g. Objections)"
+                                            className="w-full px-2 py-1 text-[12px] bg-black/30 border border-white/10 rounded text-white placeholder-white/40 outline-none focus:border-white/30" />
+                                        <textarea
+                                            value={newSectionDesc}
+                                            onChange={e => setNewSectionDesc(e.target.value)}
+                                            placeholder="Guidance for the AI (what to capture)…"
+                                            rows={2}
+                                            className="w-full px-2 py-1 text-[11px] bg-black/30 border border-white/10 rounded text-white/90 placeholder-white/30 outline-none focus:border-white/30" />
+                                        <button
+                                            disabled={!newSectionTitle.trim()}
+                                            onClick={addSection}
+                                            className="w-full px-2 py-1.5 text-[12px] bg-white/10 hover:bg-white/15 text-white rounded disabled:opacity-40 flex items-center justify-center gap-1">
+                                            <Plus size={12} /> Add Section
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         )}

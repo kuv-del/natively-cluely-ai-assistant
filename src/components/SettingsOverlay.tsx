@@ -366,6 +366,52 @@ interface SettingsOverlayProps {
     isTrialActive?: boolean;
 }
 
+// Profile-level Custom Notes — global context injected into every AI call
+const ProfileCustomNotesSection: React.FC = () => {
+    const [content, setContent] = React.useState('');
+    const [loaded, setLoaded] = React.useState(false);
+    const [saveStatus, setSaveStatus] = React.useState<'idle' | 'saving' | 'saved'>('idle');
+    const api: any = (window as any).electronAPI;
+
+    React.useEffect(() => {
+        api.profileGetNotes().then((r: any) => {
+            setContent(r?.content ?? '');
+            setLoaded(true);
+        });
+    }, []);
+
+    const save = async (next: string) => {
+        setSaveStatus('saving');
+        await api.profileSaveNotes(next);
+        setSaveStatus('saved');
+        setTimeout(() => setSaveStatus('idle'), 1500);
+    };
+
+    if (!loaded) return null;
+
+    return (
+        <div className="bg-bg-item-surface rounded-xl border border-border-subtle p-5 mb-5">
+            <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-bold text-text-primary">Global Context</h3>
+                <span className="text-[11px] text-text-tertiary">
+                    {saveStatus === 'saving' ? 'Saving…' : saveStatus === 'saved' ? 'Saved' : ''}
+                </span>
+            </div>
+            <p className="text-xs text-text-secondary mb-3">
+                Context injected into EVERY AI response regardless of mode. Use for things that are always true: your name, role, communication style. Per-mode context (Scalable vs Matria) goes in the Modes panel.
+            </p>
+            <textarea
+                value={content}
+                onChange={e => setContent(e.target.value)}
+                onBlur={e => save(e.target.value)}
+                placeholder="e.g. Kate Schnetzer — Account Executive at Scalable Co. + Founder of Matria Partners. Direct/conversational tone. Avoid corporate-speak."
+                rows={6}
+                className="w-full px-3 py-2 text-[13px] bg-bg-input border border-border-subtle rounded-md text-text-primary placeholder-text-tertiary outline-none focus:border-border-hover"
+            />
+        </div>
+    );
+};
+
 const SettingsOverlay: React.FC<SettingsOverlayProps> = ({ isOpen, onClose, initialTab = 'general', isTrialActive = false }) => {
     const isLight = useResolvedTheme() === 'light';
     const [activeTab, setActiveTab] = useState(initialTab);
@@ -1887,6 +1933,8 @@ const SettingsOverlay: React.FC<SettingsOverlayProps> = ({ isOpen, onClose, init
                                             This engine constructs an intelligent representation of your career history.
                                         </p>
                                     </div>
+
+                                    <ProfileCustomNotesSection />
 
                                     {/* Intelligence Graph Hero Card */}
                                     <div className="bg-bg-item-surface rounded-xl border border-border-subtle flex flex-col justify-between overflow-hidden">

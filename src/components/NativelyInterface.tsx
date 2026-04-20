@@ -150,6 +150,26 @@ function buildProspectContextSection(ctx: DealDetailsResponse | null, maxChars =
     return full.length > maxChars ? full.slice(0, maxChars) + '\n[...truncated]' : full;
 }
 
+// Shows a small pill with the currently-active Mode (or nothing if none).
+const ActiveModeBadge: React.FC = () => {
+    const [mode, setMode] = useState<{ id: string; name: string; templateType: string } | null>(null);
+    useEffect(() => {
+        const api: any = (window as any).electronAPI;
+        api.modesGetActive?.().then((m: any) => setMode(m || null));
+        const off = api.onModeChanged?.((d: any) => {
+            setMode(d?.id ? { id: d.id, name: d.name, templateType: '' } : null);
+        });
+        return () => off?.();
+    }, []);
+    if (!mode) return null;
+    return (
+        <div className="px-2.5 py-0.5 rounded-full bg-green-500/15 border border-green-500/30 text-green-300 text-[11px] font-medium flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-green-400" />
+            {mode.name}
+        </div>
+    );
+};
+
 const NativelyInterface: React.FC<NativelyInterfaceProps> = ({ onEndMeeting, overlayOpacity = OVERLAY_OPACITY_DEFAULT }) => {
     const isLightTheme = useResolvedTheme() === 'light';
     const [isExpanded, setIsExpanded] = useState(true);
@@ -473,21 +493,35 @@ const NativelyInterface: React.FC<NativelyInterfaceProps> = ({ onEndMeeting, ove
             setIsProcessing(false);
 
             // backlog 1.10: load deal context that was pre-fetched at startMeeting IPC time
-            if (window.electronAPI?.sessionGetDealContext) {
-                window.electronAPI.sessionGetDealContext().then((ctx: DealDetailsResponse | null) => {
-                    setDealContext(ctx);
-                    dealContextRef.current = ctx;
-                    if (ctx?.contact) {
-                        const name = [ctx.contact.first_name, ctx.contact.last_name].filter(Boolean).join(' ');
-                        console.log(`[NativelyInterface] dealContext loaded for contact: ${name || 'unknown'}`);
+            // Mode gating: only load deal context for sales modes. Training/recruiting/etc. skip it.
+            const api: any = window.electronAPI;
+            const loadDealIfSales = async () => {
+                try {
+                    const active = await api.modesGetActive?.();
+                    const isSales = !active || active.templateType === 'sales';
+                    if (!isSales) {
+                        console.log(`[NativelyInterface] Skipping deal context (active mode: ${active.name} / ${active.templateType} — not sales)`);
+                        setDealContext(null);
+                        dealContextRef.current = null;
+                        return;
                     }
-                }).catch((err: unknown) => {
-                    console.warn('[NativelyInterface] sessionGetDealContext failed (non-fatal):', err);
-                });
-            } else {
-                setDealContext(null);
-                dealContextRef.current = null;
-            }
+                    if (api.sessionGetDealContext) {
+                        const ctx: DealDetailsResponse | null = await api.sessionGetDealContext();
+                        setDealContext(ctx);
+                        dealContextRef.current = ctx;
+                        if (ctx?.contact) {
+                            const name = [ctx.contact.first_name, ctx.contact.last_name].filter(Boolean).join(' ');
+                            console.log(`[NativelyInterface] dealContext loaded for contact: ${name || 'unknown'}`);
+                        }
+                    } else {
+                        setDealContext(null);
+                        dealContextRef.current = null;
+                    }
+                } catch (err) {
+                    console.warn('[NativelyInterface] deal-context load failed (non-fatal):', err);
+                }
+            };
+            loadDealIfSales();
 
             analytics.trackConversationStarted();
         });
@@ -2071,6 +2105,7 @@ Provide only the answer, nothing else.`;
                             appearance={appearance}
                             onLogoClick={() => window.electronAPI?.setWindowMode?.('launcher')}
                         />
+                        <ActiveModeBadge />
                         <div
                             className={`relative w-[600px] max-w-full backdrop-blur-2xl border rounded-[24px] overflow-hidden flex flex-col draggable-area overlay-shell-surface ${overlayPanelClass}`}
                             style={appearance.shellStyle}
