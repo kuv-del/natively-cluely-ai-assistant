@@ -177,6 +177,30 @@ const EmptyState: React.FC<{ message: string }> = ({ message }) => (
 
 // ─── Next/Last meeting indicator ──────────────────────────────────────────────
 
+// Parse a markdown summary into section blocks by H2/H3 headings.
+// If no headings, returns a single section with the whole body (caller then falls back to normal rendering).
+function parseSummaryIntoSections(md: string): Array<{ title: string; body: string }> {
+    const lines = md.split(/\r?\n/);
+    const sections: Array<{ title: string; body: string }> = [];
+    let current: { title: string; body: string } | null = null;
+    const headingRx = /^\s{0,3}(#{2,3})\s+(.+?)\s*#*\s*$/;
+    const boldHeadingRx = /^\s{0,3}\*\*(.+?)\*\*\s*:?\s*$/;
+    for (const line of lines) {
+        const h = line.match(headingRx) || line.match(boldHeadingRx);
+        if (h) {
+            if (current) sections.push({ title: current.title, body: current.body.trim() });
+            const title = (h[2] ?? h[1]).trim();
+            current = { title, body: '' };
+        } else if (current) {
+            current.body += line + '\n';
+        } else {
+            current = { title: '', body: line + '\n' };
+        }
+    }
+    if (current) sections.push({ title: current.title, body: current.body.trim() });
+    return sections.filter(s => s.title || s.body);
+}
+
 function formatMeetingDate(isoStr: string | undefined): string {
     if (!isoStr) return '';
     const d = new Date(isoStr);
@@ -594,14 +618,31 @@ const DealDetails: React.FC<DealDetailsProps> = ({ contactId, onBack }) => {
                                                         </span>
                                                     </div>
 
-                                                    {/* Summary content */}
-                                                    {summary ? (
-                                                        <div className="prose prose-sm prose-invert max-w-none text-[13px] leading-relaxed [&_h2]:text-[13px] [&_h2]:font-semibold [&_h2]:mt-3 [&_h2]:mb-1 [&_h3]:text-[13px] [&_h3]:font-semibold [&_h3]:mt-3 [&_h3]:mb-1 [&_p]:my-1 [&_ul]:my-1 [&_li]:my-0.5 pl-1">
-                                                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                                                                {summary}
-                                                            </ReactMarkdown>
-                                                        </div>
-                                                    ) : (
+                                                    {/* Summary content — if headings present, render as structured Section cards */}
+                                                    {summary ? (() => {
+                                                        const sections = parseSummaryIntoSections(summary);
+                                                        if (sections.length > 1) {
+                                                            return (
+                                                                <div className="space-y-2 pl-1">
+                                                                    {sections.map((sec, i) => (
+                                                                        <div key={i} className={`rounded-md border ${isLight ? 'border-gray-200 bg-white/60' : 'border-white/10 bg-white/5'} px-3 py-2`}>
+                                                                            {sec.title && (
+                                                                                <div className={`text-[12px] font-semibold mb-1 ${isLight ? 'text-blue-700' : 'text-blue-300'}`}>{sec.title}</div>
+                                                                            )}
+                                                                            <div className="prose prose-sm prose-invert max-w-none text-[13px] leading-relaxed [&_p]:my-1 [&_ul]:my-1 [&_li]:my-0.5">
+                                                                                <ReactMarkdown remarkPlugins={[remarkGfm]}>{sec.body}</ReactMarkdown>
+                                                                            </div>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            );
+                                                        }
+                                                        return (
+                                                            <div className="prose prose-sm prose-invert max-w-none text-[13px] leading-relaxed [&_h2]:text-[13px] [&_h2]:font-semibold [&_h2]:mt-3 [&_h2]:mb-1 [&_h3]:text-[13px] [&_h3]:font-semibold [&_h3]:mt-3 [&_h3]:mb-1 [&_p]:my-1 [&_ul]:my-1 [&_li]:my-0.5 pl-1">
+                                                                <ReactMarkdown remarkPlugins={[remarkGfm]}>{summary}</ReactMarkdown>
+                                                            </div>
+                                                        );
+                                                    })() : (
                                                         <p className="text-[13px] text-text-tertiary italic pl-1">Summary generating…</p>
                                                     )}
 

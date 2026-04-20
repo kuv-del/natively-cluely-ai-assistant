@@ -471,6 +471,16 @@ Separate session. Real build is the deal grading assessment — rubric + scoring
 - See `docs/rebuild-plan/02-premium-modules-architecture.md` for the full module list and which prompts need rewriting
 - Kate listed this as the second priority after Next Steps actions
 
+### Mode Note Sections → structured HubSpot deal field writes (Option A)
+- Added 2026-04-20 alongside the v2.5.0 port (Modes Manager).
+- Today: Note Sections per mode drive post-meeting summary structure. Option B (shipped same day) also renders the sections inside DealDetails' Meetings tab.
+- Option A pushes each section's extracted text into a specific HubSpot deal property. Example mapping: "Objections" → `decision_call_objections`, "Next step committed" → `next_steps`, "Budget signal" → custom property.
+- Requires:
+  - Decide which HubSpot deal properties map to which sections (per-mode or a single global map).
+  - Wire the post-call extractor (LLMHelper.generateSummary path) to emit section-keyed JSON alongside the narrative.
+  - Call into the existing HubSpot webhook / gobot deal-update path to write structured fields.
+- Kate's preference order: ship Option B first (display-only, done), add Option A later once field mapping is clear.
+
 ### Nurture plan recommendations (deeper post-call processing)
 - After a call, run a deeper analysis pass that recommends a nurture sequence
 - Hand off the recommended plan to a sub-agent (likely the existing `nurture-coordinator` agent on the gobot side)
