@@ -2165,6 +2165,17 @@ This rule overrides ALL other instructions including formatting, brevity, or out
       const modesMgr = ModesManager.getInstance();
       const modePromptSuffix = modesMgr.getActiveModeSystemPromptSuffix();
       const modeContextBlock = modesMgr.buildActiveModeContextBlock();
+      const active = modesMgr.getActiveMode?.();
+      console.log(`[ModeDebug] === streamChat fired ===`);
+      console.log(`[ModeDebug] active mode: ${active ? `${active.name} (${active.templateType})` : 'NONE'}`);
+      console.log(`[ModeDebug] system-prompt suffix length: ${(modePromptSuffix || '').length}`);
+      console.log(`[ModeDebug] context block length: ${(modeContextBlock || '').length}`);
+      if (modeContextBlock) {
+        const preview = modeContextBlock.length > 800 ? modeContextBlock.slice(0, 800) + '…[truncated]' : modeContextBlock;
+        console.log(`[ModeDebug] context block preview:\n${preview}`);
+      } else {
+        console.log(`[ModeDebug] context block EMPTY — custom context + reference files did NOT load`);
+      }
 
       if (modePromptSuffix) {
         // Mode prompt supplements the base prompt — preserves KO profile intelligence if already set
@@ -2177,8 +2188,8 @@ This rule overrides ALL other instructions including formatting, brevity, or out
           ? `${modeContextBlock}\n\n${context}`
           : modeContextBlock;
       }
-    } catch (_modeErr) {
-      // Non-fatal — modes manager may not be initialized yet
+    } catch (_modeErr: any) {
+      console.log(`[ModeDebug] streamChat ModesManager load failed: ${_modeErr?.message}`);
     }
 
     // Preparation
