@@ -488,6 +488,28 @@ Separate session. Real build is the deal grading assessment — rubric + scoring
 
 ---
 
+## Nice to have
+
+### Dual-channel STT Audio Diagnostic Panel (upstream commit 14683cf)
+- Added 2026-04-20 alongside v2.5.0 port.
+- Adds a diagnostic card in the overlay showing real-time status of mic + system-audio channels, categorized STT errors (10 categories), STT provider per channel (Deepgram / Google / Groq / etc.), expandable technical details, OS version detection, one-click "copy report" for support.
+- Would be useful if Deepgram ever drops connection mid-call — right now we'd need to tail logs to diagnose.
+- ~1 hour port. Mostly additive UI; the underlying error reporting surface already exists on the main process.
+- Source commit: https://github.com/Natively-AI-assistant/natively-cluely-ai-assistant/commit/14683cf (adds `src/lib/sttErrorMapper.ts`, `src/components/ui/ChannelCard.tsx`, expands `NativelyInterface.tsx` with the panel, adds `get-os-version` IPC).
+
+---
+
+## Fixes not currently needed but available
+
+### Deepgram multi-key pools + round-robin rotation (upstream v2.5.0)
+- Added 2026-04-20 alongside v2.5.0 port.
+- Upstream added the ability to configure multiple Deepgram API keys and rotate them for reliability with per-key health tracking.
+- Our port has the single-key + shadow-probe reconnect + connection staggering, which is sufficient for Kate's usage volume.
+- Only matters if Kate starts hitting Deepgram rate limits on a single key (not happening at current call volume).
+- Pull the multi-key logic from upstream's `CredentialsManager.ts` + `NativelyProSTT.ts` + a new key-pool helper when needed.
+
+---
+
 ## Reference notes
 
 - **Convex live deployment:** `opulent-bandicoot-376` (set as `CONVEX_URL=https://opulent-bandicoot-376.convex.cloud` in `~/gobot/.env`). The "prod" deployment `determined-chinchilla-655` is unused — DO NOT push there.
