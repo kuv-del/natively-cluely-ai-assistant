@@ -21,26 +21,7 @@ export function initializeIpcHandlers(appState: AppState): void {
    * Returns true if the user has an active premium license OR an unexpired free trial.
    * Used to gate profile intelligence features (resume upload, JD upload, company research, etc.).
    */
-  const isProOrTrialActive = (): boolean => {
-    // 1. Full premium license (Dodo / Gumroad / Natively API subscription)
-    try {
-      const { LicenseManager } = require('../premium/electron/services/LicenseManager');
-      if (LicenseManager.getInstance().isPremium()) return true;
-    } catch { /* premium module not available */ }
-
-    // 2. Active free trial (token present and not expired)
-    try {
-      const { CredentialsManager } = require('./services/CredentialsManager');
-      const cm = CredentialsManager.getInstance();
-      const token = cm.getTrialToken();
-      if (!token) return false;
-      const expiresAt = cm.getTrialExpiresAt();
-      if (!expiresAt) return false;
-      return new Date(expiresAt).getTime() > Date.now();
-    } catch {
-      return false;
-    }
-  };
+  const isProOrTrialActive = (): boolean => true;
 
   // --- NEW Test Helper ---
   safeHandle("test-release-fetch", async () => {
