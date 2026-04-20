@@ -708,7 +708,20 @@ CRITICAL RULES:
       const modesMgr = ModesManager.getInstance();
       activeModePrompt = modesMgr.getActiveModeSystemPromptSuffix() ?? '';
       modeContextBlock = modesMgr.buildActiveModeContextBlock() ?? '';
-    } catch (_) {}
+      const active = modesMgr.getActiveMode?.();
+      console.log(`[ModeDebug] === suggestion fired ===`);
+      console.log(`[ModeDebug] active mode: ${active ? `${active.name} (${active.templateType})` : 'NONE'}`);
+      console.log(`[ModeDebug] system-prompt suffix length: ${activeModePrompt.length}`);
+      console.log(`[ModeDebug] context block length: ${modeContextBlock.length}`);
+      if (modeContextBlock) {
+        const preview = modeContextBlock.length > 800 ? modeContextBlock.slice(0, 800) + '…[truncated]' : modeContextBlock;
+        console.log(`[ModeDebug] context block preview:\n${preview}`);
+      } else {
+        console.log(`[ModeDebug] context block EMPTY — custom context + reference files did NOT load`);
+      }
+    } catch (e: any) {
+      console.log(`[ModeDebug] ModesManager load failed: ${e?.message}`);
+    }
 
     // Prepend mode context block (reference files, custom context) to the transcript context
     const enrichedContext = modeContextBlock
@@ -719,6 +732,9 @@ CRITICAL RULES:
     const customNotesBlock = this.customNotes?.trim()
       ? `\n\n<user_context>\n${this.customNotes.trim()}\n</user_context>\nUse this context naturally if relevant. Never quote it verbatim.`
       : '';
+    if (this.customNotes?.trim()) {
+      console.log(`[ModeDebug] profile customNotes length: ${this.customNotes.trim().length}`);
+    }
 
     const basePrompt = activeModePrompt
       ? `${HARD_SYSTEM_PROMPT}\n\n## ACTIVE MODE\n${activeModePrompt}${customNotesBlock}`
