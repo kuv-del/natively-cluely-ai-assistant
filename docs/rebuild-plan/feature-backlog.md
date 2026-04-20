@@ -1,6 +1,33 @@
 # Natively Customization Backlog
 
-Features Kate has confirmed she wants but that we're not building right now. Listed in the order she expects to ship, not necessarily priority order.
+Features Kate has confirmed she wants but that we're not building right now.
+
+**Priority order (remaining active items, 2026-04-20):**
+1. 🔴 **1.21** RSVP + calendar color on meeting feed — active priority
+2. 🔴 **1.1** Storage architecture (Convex as source of truth — foundation for everything)
+3. 🟠 **1.3** Knowledge base revamps (sales-reframing 13 premium modules)
+4. 🟠 **1.6** Next Steps button + commands → HubSpot updates
+5. 🟠 **1.7** Test HubSpot updates (wire approved Next Steps → HubSpot PATCH)
+6. 🟠 **1.14** Deal grading assessment (Grade tab)
+7. 🟡 **1.16** Meeting outcome classifier (tomato color + manual command)
+8. 🟡 **1.17** Multi-party transcript swap
+9. 🟡 **1.18** Attendee name labeling
+10. 🟡 **1.19** Live coaching reads full deal context from SQLite
+11. 🟡 **1.4** SDR notes + SDR transcript in MeetingDetails
+12. 🟡 **1.5** Company & prospect enrichment
+13. 🟡 **1.9** Past calls auto-merged into Prep tab
+14. 🟡 **1.10** Hydrate in-call overlay with prospect context
+15. 🟡 **1.11** MeetingDetails chat reaches every tab
+16. 🟢 **1.15** HubSpot-ID compliance ratchet (do before 1.13 Stage 5)
+17. 🟢 **Option A** Note Sections → HubSpot deal field writes (new 2026-04-20)
+18. 🟢 **Phase 2.2/2.3** Powerdialing + task blocks
+19. 🟢 **Phase 3** Calendar widget + Nurture tab
+20. 🟢 **Phase 4** Pipeline view + powerdialer + bulk chat + larger calendar + menu bar
+21. 💤 **Nice to have** Dual-channel STT Audio Diagnostic Panel
+22. 💤 **Available but not needed** Deepgram multi-key pools
+23. **B1** SDR triage transcripts missing (Spellman/Tenny bug)
+
+Shipped items are listed at the bottom under **Completed** with strikethrough + ship date.
 
 ---
 
@@ -91,7 +118,7 @@ Current `src/slack-triage-sync.ts` writes straight to Notion. Flip it so:
 
 | # | Item | Status |
 |---|------|--------|
-| 1.20 | **Zoom auto-detect: auto-start/stop Natively with Zoom** — detect when a Zoom meeting starts (process enters call state) and auto-start the Natively session linked to the matching calendar event. Detect when a Zoom meeting ends (user leaves, meeting ends, Zoom exits call state) and auto-stop the Natively session (triggering transcript save + Convex push). Kate should never manually click Start/End Meeting — Natively follows Zoom. Detection approach: poll Zoom process state every 5-10s (check for `CptHost` subprocess which only runs during active calls, or monitor `zoom.us` window title changes). Match to calendar event by checking which upcoming event's time window overlaps with the Zoom join time. Interim behavior: the pre-meeting popup "Join" button opens Zoom + ends any active Natively session + starts new one, giving seamless transitions until auto-detect is built. | **TOP PRIORITY** |
+| 1.20 | ~~**Zoom auto-detect**~~ — **SHIPPED 2026-04-16** — `ZoomDetector.ts` polls for `CptHost` subprocess every 5s, auto-starts/stops Natively session linked to matching calendar event. See Completed section. | ✅ Shipped 2026-04-16 |
 | 1.21 | **RSVP status + calendar color on meeting feed** — the calendar icon on each meeting row in the Launcher feed should reflect the prospect's RSVP status: green calendar if accepted, red alert triangle if declined, black/grey calendar if unconfirmed/needsAction/tentative. Also show the current Google Calendar color of the event (blueberry, lavender, tomato, etc.) as a small color dot or border. Data already available: `event.attendees[].responseStatus` and `event.colorId`/`colorHex` from CalendarManager. | Priority |
 
 | # | Item | Status |
@@ -103,7 +130,7 @@ Current `src/slack-triage-sync.ts` writes straight to Notion. Flip it so:
 | 1.5 | **Company & prospect enrichment** — fill out the prospect profile with deeper data (LinkedIn snapshot, recent news, headcount trends, recent deals). Sources: existing gobot enrichment scripts + Convex. | Phase 1 |
 | 1.6 | **Next Steps button + commands** — the structured-output recommendation pipeline from Kate's spec doc, with chat-back corrections that re-output the entire structure preserving order. | Phase 1 |
 | 1.7 | **Test HubSpot updates** — actually fire the approved Next Steps actions through to HubSpot (ship the gobot endpoint that PATCHes deals directly, no Notion in the loop). | Phase 1 |
-| 1.8 | **"SCO" marker on meetings** — Kate wants this **tomorrow**. Visual indicator on calendar events / meeting list rows that distinguishes Scalable Co. sales meetings from personal/other meetings. Likely a small badge or color tag derived from whether the contact has a HubSpot deal in Convex. | **Tomorrow** |
+| 1.8 | ~~**"SCO" marker on meetings**~~ — **SHIPPED 2026-04-14** (Deal pill in main feed shows orange "Deal" badge for meetings with linked HubSpot deals, commits 4381e22 + 54d9be3). | ✅ Shipped 2026-04-14 |
 | 1.9 | **Past calls auto-merged into upcoming/current call's Prep tab** — when Kate opens the Prep tab for an upcoming or in-progress meeting, automatically pull in summaries + transcripts + key signals from ALL prior calls with the same contact (SDR call, prior discovery, prior demo, follow-ups). Renders as a "Previous Conversations" section in the Prep tab — chronological, with each prior call's date / type / summary expandable. Different from past-meetings pills (1.2) which are navigation; this is in-place context aggregation. Both surfaces are powered by the same Convex query once storage is unified. | Phase 1 |
 | 1.10 | **Hydrate in-call overlay with prospect context at startMeeting** — today the overlay (`NativelyInterface`) receives only `calendarEventId` + audio device info when a meeting starts. It has zero context during the live call: no prep dossier, no contact/deal info from Convex, no prior transcripts, no SDR notes. All coaching is done on the live transcript alone. Fix: when `startMeeting` IPC fires, bundle up and pass into the overlay: (a) prep dossier JSON, (b) `/natively/meeting-profile` payload (contact + company + deal), (c) prior meetings' summaries + transcripts for the same `contact_id` / `deal_id`, (d) SDR triage notes if present. Store on `SessionTracker.currentMeetingMetadata` so the RAG pipeline, in-call chat overlay (`MeetingChatOverlay`), and AI suggestion generators can all read from it. Depends on: 1.1 (storage unification — so prior transcripts actually exist in Convex) and the Prospect-tab query (the same cumulative bundle powers both). Circle back after 1.1 + Prospect tab are in. | Phase 1 |
 | 1.11 | **MeetingDetails chat can reach every tab (not just transcript + summary)** — today the chat input at the bottom of MeetingDetails calls `rag:query-meeting`, which only indexes full transcript + summary overview + key points + action items. It cannot see the Prep dossier, the Profile tab's Convex data (contact/company/deal), or the Usage log. Fallback path (when RAG isn't ready) additionally caps transcript at the last 20 turns. Fix in two stages: (a) quick win — extend `buildContextString()` in `MeetingChatOverlay` to also include the prep dossier + profile payload so fallback-mode chat immediately gets richer context (~20-line change, no RAG pipeline touch); (b) bigger win — once DealDetails lands, re-scope the chat from meeting-scoped to contact-scoped, pulling in prior meetings' transcripts + SDR notes via the same cumulative Convex query. Related to 1.10 (overlay hydration) — they both want the same bundle in different surfaces. | Phase 1 |
@@ -122,7 +149,7 @@ Current `src/slack-triage-sync.ts` writes straight to Notion. Flip it so:
 
 | # | Item | Status |
 |---|---|---|
-| 2.1 | **Pre-meeting auto-join popup** (T-2 minutes). One-click opens Zoom + starts Natively coaching overlay. Same as the existing "Pre-meeting auto-join popup" detail section below. | Phase 2 |
+| 2.1 | ~~**Pre-meeting auto-join popup** (T-2 minutes)~~ — **SHIPPED 2026-04-15/16** — Notion Calendar–style banner with Join Now + dismiss X. Main-process polling (60s). See Completed section. | ✅ Shipped 2026-04-16 |
 | 2.2 | **Powerdialing blocks** — Kate can schedule a block of time for cold-calling. When the block fires, a popup appears prompting her to start the dialing session. | Phase 2 |
 | 2.3 | **Task blocks** — Kate can schedule reminder blocks for non-meeting tasks. Popup fires at the scheduled time to prompt the action. | Phase 2 |
 
@@ -521,6 +548,88 @@ Separate session. Real build is the deal grading assessment — rubric + scoring
 - Our port has the single-key + shadow-probe reconnect + connection staggering, which is sufficient for Kate's usage volume.
 - Only matters if Kate starts hitting Deepgram rate limits on a single key (not happening at current call volume).
 - Pull the multi-key logic from upstream's `CredentialsManager.ts` + `NativelyProSTT.ts` + a new key-pool helper when needed.
+
+---
+
+## Completed — shipped items (reverse chronological)
+
+### 2026-04-20 — v2.5.0 port session
+
+~~**Deepgram SDK v3 / Nova-3 / shadow-probe / connection staggering**~~ — migrated from raw `ws` WebSocket to `@deepgram/sdk` v3 `listen.live`. Nova-3 model. Shadow-probe reconnect + exponential backoff + connection staggering to prevent 1006 rate-limit drops. `NativelyProSTT` stability timer. Verified on live call (transcripts flowing both channels, clean 1000 close). — shipped 2026-04-20
+
+~~**Modes Manager — 7 persona templates**~~ — cherry-picked upstream commit 5d95836. Kate creates/edits/activates/deletes modes. Templates: Sales, Recruiting, Team Meet, Training/Lecture, General, Looking for Work, Technical Interview. Custom UI panel (`src/components/settings/ModesSettings.tsx`) replaces upstream's private-submodule component. — shipped 2026-04-20
+
+~~**Custom Context per mode**~~ — free-form textarea, auto-saves on blur, injected into every AI response in that mode. Kate uses this for Scalable/Matria-specific framing. — shipped 2026-04-20
+
+~~**Reference Files per mode (PDF/DOCX/TXT)**~~ — upload → extracted text → injected into AI context. `pdf-parse` v2 `PDFParse` class API + `mammoth` for DOCX. Verified with Scalable Proposal PDF + GreenTech Case Study. — shipped 2026-04-20
+
+~~**Note Sections per mode**~~ — per-mode note-template editor (title + guidance per section). Sections structure the post-meeting summary output. — shipped 2026-04-20
+
+~~**Profile-level Global Context textarea**~~ — Settings → Profile tab → "Global Context" auto-save textarea. Injects into EVERY AI call regardless of mode. `profile_custom_notes` SQLite table. — shipped 2026-04-20
+
+~~**Active Mode badge in overlay**~~ — small green pill next to TopPill showing active mode name. Updates live via `onModeChanged` IPC event. — shipped 2026-04-20
+
+~~**Mode-gated DealDetails context loading**~~ — `NativelyInterface` skips `sessionGetDealContext` auto-load when active mode is non-sales (training / recruiting / team-meet / lecture / general). Sales modes still auto-load deal context as before. — shipped 2026-04-20
+
+~~**Option B — structured Section cards in DealDetails Meetings tab**~~ — past-meeting summaries with markdown headings render each section as a bordered card. Flat summaries (no headings) fall through to original single-block renderer. `parseSummaryIntoSections` helper in `DealDetails.tsx`. — shipped 2026-04-20
+
+~~**SQLite v14 migration**~~ — 4 new tables: `modes`, `mode_reference_files`, `mode_note_sections`, `profile_custom_notes`. Migrations v10→v11→v12→v13→v14 applied cleanly on first run. All Kate's existing meetings/transcripts/deals data preserved. — shipped 2026-04-20
+
+~~**Custom ModesSettings UI matching theme tokens**~~ — replaced hardcoded `text-white`/`bg-[#1a1a1c]` with theme tokens (`text-text-primary`, `bg-bg-component`, `bg-bg-item-surface`, `bg-bg-input`, etc.) so the modal matches light/dark themes. — shipped 2026-04-20
+
+~~**Premium gate bypassed**~~ — `isProOrTrialActive()` in `ipcHandlers.ts` now unconditionally returns `true`. Kate can create unlimited modes, upload reference files, delete modes without trial/license checks. — shipped 2026-04-20
+
+~~**Upstream auto-updater modal suppressed**~~ — `UpdateBanner.tsx` `onUpdateAvailable` no longer shows the "v2.5.0 is ready" modal. Clicking Update on that would have wiped the custom fork. Still logs detected version to console. — shipped 2026-04-20
+
+~~**Debug logging for mode injection**~~ — `[ModeDebug]` console lines in `LLMHelper.ts` (both `generateSuggestion` and `streamChat` paths) print active mode, suffix length, context block length, and context preview on every AI call. — shipped 2026-04-20
+
+~~**Audio privacy fix (mic stays off in Settings)**~~ — came with Modes cherry-pick. `reconfigureSttProvider` only calls `setupSystemAudioPipeline` when `isMeetingActive`. No eager mic stream = no macOS orange indicator outside meetings. — shipped 2026-04-20 (verified)
+
+~~**Screenshot listener race fix**~~ — came with Modes cherry-pick. Screenshot listeners moved to mount-only effect so they survive overlay expand/collapse transitions. — shipped 2026-04-20 (verified)
+
+---
+
+### 2026-04-15/16 — major build session
+
+~~**Pre-meeting popup**~~ — Notion Calendar–style banner, T-2min, Join Now + dismiss. Main-process polling 60s. Duplicate prevention via `remindedEventIds`. Always shows during active meetings. (**Covers backlog 2.1**) — shipped 2026-04-16
+
+~~**Meeting linking fix**~~ — Start Now + main CTA pass `calendarEventId` so meetings link correctly. Navigation rewired: meeting title click → DealDetails (MeetingDetails fallback). — shipped 2026-04-16
+
+~~**Audio capture — SCK default + AEC3 echo cancellation**~~ — diagnosed CoreAudio Global Process Tap silence on macOS Tahoe. SCK forced as default in all start paths. AEC3 Rust crate built and integrated as native module. — shipped 2026-04-16
+
+~~**Zoom auto-detect**~~ — `ZoomDetector.ts` polls `CptHost` process every 5s. Auto-start/stop Natively with Zoom. Matches to nearest calendar event ±10min. (**Covers backlog 1.20**) — shipped 2026-04-16
+
+~~**Storage unification — Convex write-through**~~ — `POST /natively/save-meeting` endpoint. `nativelyMutations.ts` with `saveTranscript` + `saveSummary`. `MeetingPersistence` writes to SQLite AND Convex after every meeting. Speaker labels resolved ("user" → "Kate Schnetzer", "interviewer" → guest name). April 2026 meetings backfilled (22 events with `calendar_event_ids`). (**Partial coverage of 1.1 — full storage architecture still pending**) — shipped 2026-04-16
+
+~~**Meeting feed — Convex merge**~~ — `GET /natively/feed` endpoint. IPC handler merges SQLite + Convex feeds, dedup by `calendarEventId`. — shipped 2026-04-16
+
+~~**DealDetails updates**~~ — "Past Meetings" → "Meetings" rename. Expandable transcript toggle (collapsed by default, white pill "Transcript →"). Handles array segments (Natively) + string transcripts (Zoom/Gong). Fixed `.unique()` crash → `.first()`. Kate's Deal Stage pill. Demo/Close/Next Meeting dates in header. Profile tab SDR Owner/Stage/Outcome/Offer/Close/Next Steps. Meetings tab `hs_activity_type` pill. — shipped 2026-04-16
+
+~~**HubSpot webhook sync — new fields**~~ — syncs `offer_made`, `expected_close_date`, `decision_call_outcome` to Convex deals table. `hs_activity_type` added to meetings schema. — shipped 2026-04-16
+
+---
+
+### 2026-04-14 — earlier work
+
+~~**DealDetails Stage 4 — Cumulative Summary tab**~~ — `generate-deal-summary.ts` script, `com.go.deal-summary-gen` launchd job (30min), `nativelySummariesFns.ts`, cumulative summary rendering. — shipped 2026-04-14 (gobot b845aa9, natively 81988ab)
+
+~~**DealDetails Stage 4.5 — Navigation polish + HubSpot URL fix**~~ — Past Meetings tab + tab reorder, Deal pill on main feed (orange badge), Past Meetings drilldown, HubSpot link icon on upcoming rows, HubSpot portal ID + URL format fix (`/record/0-1/{id}` canonical paths). (**Covers backlog 1.8 SCO marker**) — shipped 2026-04-14 evening
+
+~~**DealDetails Stages 0-3**~~ — foundational plumbing (Convex schema `natively_*` + `sdr_notes`, `sdrNotes.ts` module, Slack triage sync flip, Convex→Notion backup script); backend data layer (`dealDetailsByContactId`, `/natively/deal-details` HTTP, `meetings.summary_markdown`, summary generation script + launchd job); scaffold + navigation; tabs wired one at a time. — shipped 2026-04-14
+
+~~**Discovery vs SDR triage — 1 per contact rule**~~ — at-ingest patching: `discovery-transcript-sync.ts` commit `1a1f709`. One-time backfill: 45 duplicate rows deleted, 12 reclassified sdr_triage→discovery (Kate-run via rep_name), 41 sdr_discovery normalized to sdr_triage. — shipped 2026-04-14
+
+---
+
+### 2026-04-13 — calendar + profile foundations
+
+~~**Calendar fetch range + GCAL_COLOR_MAP + attendees/colors in events**~~ — 24h→2 business days, full color/attendee/location/link extraction. — shipped 2026-04-13
+
+~~**Profile tab on MeetingDetails**~~ — First/Last/Email/Phone/Company/Location/SDR Owner/Deal Stage + HubSpot Contact + Deal URL buttons. — shipped 2026-04-13
+
+~~**Convex `/natively/meeting-profile` endpoint**~~ — deployed live, returns joined contact+company+deal blob. — shipped 2026-04-13
+
+~~**`hubspot-mapping.ts` util**~~ — DEAL_STAGE_MAP mirror, URL helpers, portal ID constant. — shipped 2026-04-13
 
 ---
 
