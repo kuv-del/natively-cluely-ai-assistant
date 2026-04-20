@@ -12,16 +12,12 @@ const UpdateBanner: React.FC = () => {
 
     useEffect(() => {
         // Listen for update available
+        // NOTE (Kate fork): Kate's fork ships a cherry-picked v2.5.0. Upstream's
+        // auto-updater would overwrite all custom code if she clicked Update.
+        // We log but do NOT show the modal.
         const unsubAvailable = window.electronAPI.onUpdateAvailable((info: any) => {
-            console.log('[UpdateBanner] Update available:', info);
-            setUpdateInfo(info);
-            setErrorMessage(null);
-            setStatus('idle'); // Reset from any prior error/state before showing update info
-            // If parsed notes are included in the info object (from our backend change)
-            if (info.parsedNotes) {
-                setParsedNotes(info.parsedNotes);
-            }
-            setIsVisible(true);
+            console.log('[UpdateBanner] Update available (suppressed — custom fork):', info?.version);
+            // Intentionally not calling setIsVisible(true).
         });
 
         // Listen for download progress

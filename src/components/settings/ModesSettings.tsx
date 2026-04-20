@@ -156,54 +156,61 @@ const ModesSettings: React.FC<Props> = ({ onClose }) => {
         await reload();
     };
 
+    const panelBg = 'bg-bg-component';
+    const borderCls = 'border-border-subtle';
+    const inputCls = 'bg-bg-input border border-border-subtle text-text-primary placeholder-text-tertiary outline-none focus:border-border-hover';
+    const subtleText = 'text-text-secondary';
+    const tertiaryText = 'text-text-tertiary';
+
     return (
-        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/70 backdrop-blur-sm">
-            <div className="w-[960px] h-[640px] bg-[#1a1a1c] border border-white/10 rounded-xl shadow-2xl flex flex-col overflow-hidden">
-                <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+            <div className={`w-[960px] h-[640px] ${panelBg} border ${borderCls} rounded-xl shadow-2xl flex flex-col overflow-hidden`}>
+                <div className={`flex items-center justify-between px-6 py-4 border-b ${borderCls}`}>
                     <div>
-                        <div className="text-[15px] font-semibold text-white">Modes</div>
-                        <div className="text-[12px] text-white/50">Tailor Natively for different meeting contexts</div>
+                        <div className="text-[15px] font-semibold text-text-primary">Modes</div>
+                        <div className={`text-[12px] ${subtleText}`}>Tailor Natively for different meeting contexts</div>
                     </div>
-                    <button onClick={onClose} className="p-1 text-white/60 hover:text-white">
+                    <button onClick={onClose} className={`p-1 ${subtleText} hover:text-text-primary`}>
                         <X size={18} />
                     </button>
                 </div>
 
                 <div className="flex flex-1 overflow-hidden">
-                    <div className="w-[300px] border-r border-white/10 flex flex-col overflow-hidden">
+                    {/* LEFT: mode list */}
+                    <div className={`w-[300px] border-r ${borderCls} flex flex-col overflow-hidden`}>
                         <div className="px-4 pt-4 pb-2">
                             {!creating ? (
                                 <button
                                     onClick={() => setCreating(true)}
-                                    className="w-full flex items-center justify-center gap-2 px-3 py-2 text-[13px] text-white bg-white/10 hover:bg-white/15 rounded-md transition">
+                                    className="w-full flex items-center justify-center gap-2 px-3 py-2 text-[13px] text-text-primary bg-bg-item-surface hover:bg-bg-item-active border border-border-subtle rounded-md transition">
                                     <Plus size={14} /> New Mode
                                 </button>
                             ) : (
-                                <div className="space-y-2 p-3 bg-white/5 border border-white/10 rounded-md">
+                                <div className="space-y-2 p-3 bg-bg-item-surface border border-border-subtle rounded-md">
                                     <input
                                         autoFocus value={newName} onChange={e => setNewName(e.target.value)}
                                         placeholder="Mode name (e.g. Scalable Sales)"
-                                        className="w-full px-2 py-1.5 text-[13px] bg-black/40 border border-white/10 rounded text-white placeholder-white/40" />
+                                        className={`w-full px-2 py-1.5 text-[13px] rounded ${inputCls}`} />
                                     <select
                                         value={newTemplate} onChange={e => setNewTemplate(e.target.value as TemplateType)}
-                                        className="w-full px-2 py-1.5 text-[12px] bg-black/40 border border-white/10 rounded text-white">
+                                        className={`w-full px-2 py-1.5 text-[12px] rounded ${inputCls}`}>
                                         {TEMPLATE_OPTIONS.map(o => (
                                             <option key={o.value} value={o.value}>{o.label}</option>
                                         ))}
                                     </select>
-                                    <div className="text-[11px] text-white/50">
+                                    <div className={`text-[11px] ${subtleText}`}>
                                         {TEMPLATE_OPTIONS.find(o => o.value === newTemplate)?.desc}
                                     </div>
                                     <div className="flex gap-2">
                                         <button
                                             disabled={saving || !newName.trim()}
                                             onClick={handleCreate}
-                                            className="flex-1 px-2 py-1.5 text-[12px] bg-white text-black rounded hover:bg-white/90 disabled:opacity-40">
+                                            className="flex-1 px-2 py-1.5 text-[12px] bg-text-primary text-bg-component rounded hover:opacity-90 disabled:opacity-40 font-medium">
                                             Create
                                         </button>
                                         <button
                                             onClick={() => { setCreating(false); setNewName(''); }}
-                                            className="px-3 py-1.5 text-[12px] text-white/70 hover:text-white">
+                                            className={`px-3 py-1.5 text-[12px] ${subtleText} hover:text-text-primary`}>
                                             Cancel
                                         </button>
                                     </div>
@@ -213,17 +220,17 @@ const ModesSettings: React.FC<Props> = ({ onClose }) => {
 
                         <div className="flex-1 overflow-y-auto px-2 pb-4 space-y-1">
                             {modes.length === 0 && (
-                                <div className="px-3 py-6 text-center text-[12px] text-white/40">No modes yet</div>
+                                <div className={`px-3 py-6 text-center text-[12px] ${tertiaryText}`}>No modes yet</div>
                             )}
                             {modes.map(m => (
                                 <button
                                     key={m.id} onClick={() => setSelected(m)}
-                                    className={`w-full text-left px-3 py-2 rounded-md transition ${selected?.id === m.id ? 'bg-white/10' : 'hover:bg-white/5'}`}>
+                                    className={`w-full text-left px-3 py-2 rounded-md transition ${selected?.id === m.id ? 'bg-bg-item-active' : 'hover:bg-bg-item-surface'}`}>
                                     <div className="flex items-center gap-2">
-                                        {m.isActive && <Check size={12} className="text-green-400 flex-shrink-0" />}
+                                        {m.isActive && <Check size={12} className="text-green-500 dark:text-green-400 flex-shrink-0" />}
                                         <div className="flex-1 min-w-0">
-                                            <div className="text-[13px] text-white truncate">{m.name}</div>
-                                            <div className="text-[11px] text-white/50">{templateLabel(m.templateType)}</div>
+                                            <div className="text-[13px] text-text-primary truncate">{m.name}</div>
+                                            <div className={`text-[11px] ${subtleText}`}>{templateLabel(m.templateType)}</div>
                                         </div>
                                     </div>
                                 </button>
@@ -231,9 +238,10 @@ const ModesSettings: React.FC<Props> = ({ onClose }) => {
                         </div>
                     </div>
 
+                    {/* RIGHT: mode editor */}
                     <div className="flex-1 overflow-y-auto">
                         {!selected ? (
-                            <div className="h-full flex items-center justify-center text-[13px] text-white/40 p-10 text-center">
+                            <div className={`h-full flex items-center justify-center text-[13px] ${tertiaryText} p-10 text-center`}>
                                 Pick a mode from the left — or create one — to edit its Custom Context and reference files.
                             </div>
                         ) : (
@@ -243,34 +251,34 @@ const ModesSettings: React.FC<Props> = ({ onClose }) => {
                                         <input
                                             defaultValue={selected.name}
                                             onBlur={e => saveName(selected, e.target.value)}
-                                            className="text-[18px] font-semibold text-white bg-transparent border-b border-transparent hover:border-white/20 focus:border-white/40 w-full py-1 outline-none" />
-                                        <div className="text-[12px] text-white/50 mt-1">Template: {templateLabel(selected.templateType)}</div>
+                                            className="text-[18px] font-semibold text-text-primary bg-transparent border-b border-transparent hover:border-border-subtle focus:border-border-hover w-full py-1 outline-none" />
+                                        <div className={`text-[12px] ${subtleText} mt-1`}>Template: {templateLabel(selected.templateType)}</div>
                                     </div>
                                     <div className="flex items-center gap-2">
                                         {selected.isActive ? (
                                             <button
                                                 onClick={() => activate(null)}
-                                                className="px-3 py-1.5 text-[12px] bg-green-500/20 text-green-300 border border-green-500/30 rounded hover:bg-green-500/30">
+                                                className="px-3 py-1.5 text-[12px] bg-green-500/15 text-green-600 dark:text-green-300 border border-green-500/30 rounded hover:bg-green-500/25 font-medium">
                                                 Active — click to deactivate
                                             </button>
                                         ) : (
                                             <button
                                                 onClick={() => activate(selected.id)}
-                                                className="px-3 py-1.5 text-[12px] bg-white text-black rounded hover:bg-white/90">
+                                                className="px-3 py-1.5 text-[12px] bg-text-primary text-bg-component rounded hover:opacity-90 font-medium">
                                                 Set Active
                                             </button>
                                         )}
                                         <button
                                             onClick={() => handleDelete(selected.id)}
-                                            className="p-1.5 text-white/40 hover:text-red-400">
+                                            className={`p-1.5 ${tertiaryText} hover:text-red-500`}>
                                             <Trash2 size={14} />
                                         </button>
                                     </div>
                                 </div>
 
                                 <div>
-                                    <div className="text-[12px] font-medium text-white/80 mb-2">Custom Context</div>
-                                    <div className="text-[11px] text-white/50 mb-2">
+                                    <div className={`text-[12px] font-medium ${subtleText} mb-2`}>Custom Context</div>
+                                    <div className={`text-[11px] ${tertiaryText} mb-2`}>
                                         Context injected into every AI response in this mode. Example: "Selling Scalable Elite ($33k/yr) to 7-figure service business owners. Discovery: revops/sales bottlenecks…"
                                     </div>
                                     <textarea
@@ -278,30 +286,30 @@ const ModesSettings: React.FC<Props> = ({ onClose }) => {
                                         onBlur={e => saveContext(selected, e.target.value)}
                                         placeholder="Add company, offer, positioning, or any persistent context…"
                                         rows={10}
-                                        className="w-full px-3 py-2 text-[13px] bg-black/40 border border-white/10 rounded-md text-white placeholder-white/30 outline-none focus:border-white/30" />
+                                        className={`w-full px-3 py-2 text-[13px] rounded-md ${inputCls}`} />
                                 </div>
 
                                 <div>
                                     <div className="flex items-center justify-between mb-2">
-                                        <div className="text-[12px] font-medium text-white/80">Reference Files</div>
+                                        <div className={`text-[12px] font-medium ${subtleText}`}>Reference Files</div>
                                         <button
                                             onClick={uploadFile}
-                                            className="flex items-center gap-1 px-2 py-1 text-[12px] bg-white/10 hover:bg-white/15 text-white rounded">
+                                            className="flex items-center gap-1 px-2 py-1 text-[12px] bg-bg-item-surface hover:bg-bg-item-active border border-border-subtle text-text-primary rounded">
                                             <Upload size={12} /> Upload PDF / DOCX / TXT
                                         </button>
                                     </div>
                                     {refFiles.length === 0 ? (
-                                        <div className="text-[11px] text-white/40 py-2">No reference files attached.</div>
+                                        <div className={`text-[11px] ${tertiaryText} py-2`}>No reference files attached.</div>
                                     ) : (
                                         <div className="space-y-1">
                                             {refFiles.map(f => (
-                                                <div key={f.id} className="flex items-center gap-2 px-2 py-1.5 bg-white/5 border border-white/10 rounded">
-                                                    <FileText size={12} className="text-white/60 flex-shrink-0" />
-                                                    <div className="flex-1 text-[12px] text-white truncate">{f.fileName}</div>
-                                                    <div className="text-[11px] text-white/40">{f.content.length.toLocaleString()} chars</div>
+                                                <div key={f.id} className="flex items-center gap-2 px-2 py-1.5 bg-bg-item-surface border border-border-subtle rounded">
+                                                    <FileText size={12} className={`${subtleText} flex-shrink-0`} />
+                                                    <div className="flex-1 text-[12px] text-text-primary truncate">{f.fileName}</div>
+                                                    <div className={`text-[11px] ${tertiaryText}`}>{f.content.length.toLocaleString()} chars</div>
                                                     <button
                                                         onClick={() => deleteFile(f.id)}
-                                                        className="p-1 text-white/40 hover:text-red-400">
+                                                        className={`p-1 ${tertiaryText} hover:text-red-500`}>
                                                         <Trash2 size={12} />
                                                     </button>
                                                 </div>
@@ -311,20 +319,20 @@ const ModesSettings: React.FC<Props> = ({ onClose }) => {
                                 </div>
 
                                 <div>
-                                    <div className="text-[12px] font-medium text-white/80 mb-2">Note Sections</div>
-                                    <div className="text-[11px] text-white/50 mb-3">
+                                    <div className={`text-[12px] font-medium ${subtleText} mb-2`}>Note Sections</div>
+                                    <div className={`text-[11px] ${tertiaryText} mb-3`}>
                                         Structure how this mode's post-meeting notes are generated. Each section becomes a heading in the final summary. Example for Scalable Sales: "Prospect's pain", "Budget signal", "Objections", "Next step committed".
                                     </div>
                                     {noteSections.length > 0 && (
                                         <div className="space-y-2 mb-3">
                                             {noteSections.map(s => (
-                                                <div key={s.id} className="p-2.5 bg-white/5 border border-white/10 rounded space-y-1.5">
+                                                <div key={s.id} className="p-2.5 bg-bg-item-surface border border-border-subtle rounded space-y-1.5">
                                                     <div className="flex items-center gap-2">
                                                         <input
                                                             defaultValue={s.title}
                                                             onBlur={e => e.target.value !== s.title && updateSection(s.id, { title: e.target.value })}
-                                                            className="flex-1 px-2 py-1 text-[12px] font-medium bg-black/30 border border-white/10 rounded text-white outline-none focus:border-white/30" />
-                                                        <button onClick={() => deleteSection(s.id)} className="p-1 text-white/40 hover:text-red-400">
+                                                            className={`flex-1 px-2 py-1 text-[12px] font-medium rounded ${inputCls}`} />
+                                                        <button onClick={() => deleteSection(s.id)} className={`p-1 ${tertiaryText} hover:text-red-500`}>
                                                             <Trash2 size={12} />
                                                         </button>
                                                     </div>
@@ -333,27 +341,27 @@ const ModesSettings: React.FC<Props> = ({ onClose }) => {
                                                         onBlur={e => e.target.value !== s.description && updateSection(s.id, { description: e.target.value })}
                                                         placeholder="What should go in this section (guidance for the AI)…"
                                                         rows={2}
-                                                        className="w-full px-2 py-1 text-[11px] bg-black/30 border border-white/10 rounded text-white/90 placeholder-white/30 outline-none focus:border-white/30" />
+                                                        className={`w-full px-2 py-1 text-[11px] rounded ${inputCls}`} />
                                                 </div>
                                             ))}
                                         </div>
                                     )}
-                                    <div className="p-2.5 bg-white/5 border border-white/10 rounded space-y-1.5">
+                                    <div className="p-2.5 bg-bg-item-surface border border-border-subtle rounded space-y-1.5">
                                         <input
                                             value={newSectionTitle}
                                             onChange={e => setNewSectionTitle(e.target.value)}
                                             placeholder="New section title (e.g. Objections)"
-                                            className="w-full px-2 py-1 text-[12px] bg-black/30 border border-white/10 rounded text-white placeholder-white/40 outline-none focus:border-white/30" />
+                                            className={`w-full px-2 py-1 text-[12px] rounded ${inputCls}`} />
                                         <textarea
                                             value={newSectionDesc}
                                             onChange={e => setNewSectionDesc(e.target.value)}
                                             placeholder="Guidance for the AI (what to capture)…"
                                             rows={2}
-                                            className="w-full px-2 py-1 text-[11px] bg-black/30 border border-white/10 rounded text-white/90 placeholder-white/30 outline-none focus:border-white/30" />
+                                            className={`w-full px-2 py-1 text-[11px] rounded ${inputCls}`} />
                                         <button
                                             disabled={!newSectionTitle.trim()}
                                             onClick={addSection}
-                                            className="w-full px-2 py-1.5 text-[12px] bg-white/10 hover:bg-white/15 text-white rounded disabled:opacity-40 flex items-center justify-center gap-1">
+                                            className="w-full px-2 py-1.5 text-[12px] bg-bg-item-active hover:bg-bg-component-hover border border-border-subtle text-text-primary rounded disabled:opacity-40 flex items-center justify-center gap-1">
                                             <Plus size={12} /> Add Section
                                         </button>
                                     </div>
