@@ -3265,9 +3265,10 @@ export function initializeIpcHandlers(appState: AppState): void {
 
       let content = '';
       if (ext === '.pdf') {
-        const pdfParse = require('pdf-parse');
+        const { PDFParse } = require('pdf-parse');
         const buffer = fs.readFileSync(filePath);
-        const data = await pdfParse(buffer);
+        const parser = new PDFParse({ data: buffer });
+        const data = await parser.getText();
         content = data.text;
       } else if (ext === '.docx' || ext === '.doc') {
         const mammoth = require('mammoth');
