@@ -499,6 +499,20 @@ Separate session. Real build is the deal grading assessment — rubric + scoring
 
 ---
 
+## Verified already landed (upstream v2.5.0 fixes that came with the Modes cherry-pick)
+
+### Audio privacy — mic doesn't go hot when browsing Settings
+- Fixed in `electron/main.ts:1252` (`reconfigureSttProvider` now only sets up the audio pipeline when `isMeetingActive`).
+- Was: macOS orange mic indicator could light up while you opened Natively's Settings between meetings because `MicrophoneCapture` was eagerly calling CPAL `build_input_stream`.
+- Now: the audio pipeline is deferred until `startMeeting()`. No eager stream construction.
+
+### Screenshot listener race condition
+- Fixed in `src/components/NativelyInterface.tsx:860-874` (screenshot listeners moved to mount-only effect).
+- Was: pressing Cmd+H / Cmd+Shift+H while the overlay was expanding could silently drop the screenshot event because the `[isExpanded]` effect tore down the listeners mid-flight.
+- Now: listeners register once on mount with empty deps — survive all expand/collapse transitions.
+
+---
+
 ## Fixes not currently needed but available
 
 ### Deepgram multi-key pools + round-robin rotation (upstream v2.5.0)
