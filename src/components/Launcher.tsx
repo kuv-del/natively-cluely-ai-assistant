@@ -198,6 +198,14 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onO
             fetchMeetings();
         });
 
+        // Listen for open-calendar-event from menubar popup
+        let removeOpenCalendarEvent: (() => void) | undefined;
+        if (window.electronAPI?.onOpenCalendarEvent) {
+            removeOpenCalendarEvent = window.electronAPI.onOpenCalendarEvent((_evt: any, data: { calendarEventId: string }) => {
+                handleOpenUpcomingMeeting({ id: data.calendarEventId, title: '', startTime: new Date().toISOString() });
+            });
+        }
+
         // Simple polling for events every minute
         const interval = setInterval(fetchEvents, 60000);
 
@@ -206,6 +214,7 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onO
             if (removeMeetingsListener) removeMeetingsListener();
             if (removeUndetectableListener) removeUndetectableListener();
             if (removeMeetingStateListener) removeMeetingStateListener();
+            if (removeOpenCalendarEvent) removeOpenCalendarEvent();
             clearInterval(interval);
         };
     // eslint-disable-next-line react-hooks/exhaustive-deps

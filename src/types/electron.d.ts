@@ -286,6 +286,12 @@ export interface ElectronAPI {
   calendarUpdateEvent: (eventId: string, partial: Record<string, any>) => Promise<{ success: boolean; error?: string }>
   calendarUpdateEventColor: (eventId: string, colorId: string) => Promise<{ success: boolean; error?: string }>
 
+  // Menu bar calendar popup
+  menubarGetEvents: () => Promise<any[]>
+  menubarOpenCalendarEvent: (eventId: string) => Promise<void>
+  menubarFocusMain: () => Promise<void>
+  onOpenCalendarEvent: (callback: (event: any, data: { calendarEventId: string }) => void) => () => void
+
   // Convex meeting profile lookup (Profile tab on MeetingDetails)
   convexGetMeetingProfile: (calendarEventId: string) => Promise<{
     meeting: { id: string; calendar_event_id: string; contact_id?: string | null; title: string; meeting_type?: string; start_time: string; end_time?: string; zoom_link?: string; source?: string };
