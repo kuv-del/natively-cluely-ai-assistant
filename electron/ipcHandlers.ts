@@ -7,6 +7,7 @@ import { DatabaseManager } from "./db/DatabaseManager"; // Import Database Manag
 import * as path from "path";
 import * as fs from "fs";
 import { AudioDevices } from "./audio/AudioDevices";
+import { CalendarMenuBarHelper } from "./CalendarMenuBarHelper";
 
 
 import { RECOGNITION_LANGUAGES, AI_RESPONSE_LANGUAGES } from "./config/languages"
@@ -2434,6 +2435,33 @@ export function initializeIpcHandlers(appState: AppState): void {
   safeHandle("calendar-update-event-color", async (_, eventId: string, colorId: string) => {
     const { CalendarManager } = require('./services/CalendarManager');
     return CalendarManager.getInstance().updateEventColor(eventId, colorId);
+  });
+
+  // ── Menu bar calendar popup ──────────────────────────────────────────────
+  safeHandle("menubar:get-events", async () => {
+    const { CalendarManager } = require('./services/CalendarManager');
+    return CalendarManager.getInstance().getUpcomingEvents();
+  });
+
+  safeHandle("menubar:open-calendar-event", async (_, eventId: string) => {
+    CalendarMenuBarHelper.close();
+    const launcherWin = appState.getWindowHelper().getLauncherWindow();
+    if (launcherWin && !launcherWin.isDestroyed()) {
+      launcherWin.show();
+      launcherWin.focus();
+      setTimeout(() => {
+        launcherWin.webContents.send('open-calendar-event', { calendarEventId: eventId });
+      }, 150);
+    }
+  });
+
+  safeHandle("menubar:focus-main", async () => {
+    CalendarMenuBarHelper.close();
+    const launcherWin = appState.getWindowHelper().getLauncherWindow();
+    if (launcherWin && !launcherWin.isDestroyed()) {
+      launcherWin.show();
+      launcherWin.focus();
+    }
   });
 
   // ── Convex meeting profile lookup (Profile tab on MeetingDetails) ──

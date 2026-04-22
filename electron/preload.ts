@@ -126,6 +126,10 @@ interface ElectronAPI {
   updateMeetingTitle: (id: string, title: string) => Promise<boolean>
   updateMeetingSummary: (id: string, updates: { overview?: string, actionItems?: string[], keyPoints?: string[], actionItemsTitle?: string, keyPointsTitle?: string }) => Promise<boolean>
   onMeetingsUpdated: (callback: () => void) => () => void
+  menubarGetEvents: () => Promise<any[]>
+  menubarOpenCalendarEvent: (eventId: string) => Promise<void>
+  menubarFocusMain: () => Promise<void>
+  onOpenCalendarEvent: (callback: (event: any, data: { calendarEventId: string }) => void) => () => void
 
   // Intelligence Mode Events
   onIntelligenceAssistUpdate: (callback: (data: { insight: string }) => void) => () => void
@@ -1010,6 +1014,17 @@ contextBridge.exposeInMainWorld("electronAPI", {
   convexGetDealDetails: (contactId: string) => ipcRenderer.invoke('convex-get-deal-details', contactId),
   // backlog 1.10: retrieve deal context from SessionTracker for the live call
   sessionGetDealContext: () => ipcRenderer.invoke('session-get-deal-context'),
+
+  // Menu bar calendar popup
+  menubarGetEvents: (): Promise<any[]> => ipcRenderer.invoke('menubar:get-events'),
+  menubarOpenCalendarEvent: (eventId: string) => ipcRenderer.invoke('menubar:open-calendar-event', eventId),
+  menubarFocusMain: () => ipcRenderer.invoke('menubar:focus-main'),
+  onOpenCalendarEvent: (callback: (event: any, data: { calendarEventId: string }) => void) => {
+    ipcRenderer.on('open-calendar-event', callback);
+    return () => {
+      ipcRenderer.removeListener('open-calendar-event', callback);
+    };
+  },
 
   // Script Helper API
   scriptHelperOpen: (eventId?: string) => ipcRenderer.invoke('script-helper:open', eventId),
