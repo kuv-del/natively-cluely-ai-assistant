@@ -83,17 +83,6 @@ export const GCAL_COLOR_MAP: Record<string, string> = {
     "11": "#dc2127",
 };
 
-// Returns the date object for the next business day after the given date.
-// Skips Saturday (6) and Sunday (0).
-function nextBusinessDay(from: Date): Date {
-    const d = new Date(from);
-    d.setDate(d.getDate() + 1);
-    while (d.getDay() === 0 || d.getDay() === 6) {
-        d.setDate(d.getDate() + 1);
-    }
-    return d;
-}
-
 export class CalendarManager extends EventEmitter {
     private static instance: CalendarManager;
     private accessToken: string | null = null;
