@@ -155,6 +155,7 @@ import { ScreenshotHelper } from "./ScreenshotHelper"
 import { KeybindManager } from "./services/KeybindManager"
 import { CalendarManager } from "./services/CalendarManager"
 import { ProcessingHelper } from "./ProcessingHelper"
+import { CalendarMenuBarHelper } from "./CalendarMenuBarHelper"
 
 import { IntelligenceManager } from "./IntelligenceManager"
 import { MeetingPopupHelper } from "./MeetingPopupHelper"
@@ -2144,10 +2145,15 @@ export class AppState {
     this.tray.setToolTip('Natively') // This tooltip might also need update if we change global shortcut, but global shortcut is removed.
     this.updateTrayMenu();
 
-    // Double-click to show window
+    // Single click: toggle calendar popup
+    this.tray.on('click', () => {
+      CalendarMenuBarHelper.toggle(this.tray!);
+    });
+    // Double-click: open main window directly
     this.tray.on('double-click', () => {
-      this.centerAndShowWindow()
-    })
+      CalendarMenuBarHelper.close();
+      this.centerAndShowWindow();
+    });
 
     this.updateTrayTitle();
     if (this.trayTitleInterval) clearInterval(this.trayTitleInterval);
