@@ -226,6 +226,7 @@ export class AppState {
   private ragManager: RAGManager | null = null
   private knowledgeOrchestrator: any = null
   private tray: Tray | null = null
+  private calendarTray: Tray | null = null
   private trayTitleInterval: ReturnType<typeof setInterval> | null = null
   private trayContextMenu: Menu | null = null
   private updateAvailable: boolean = false
@@ -2142,24 +2143,20 @@ export class AppState {
     // IMPORTANT: specific template settings for macOS if needed, but 'Template' in name usually suffices
     trayIcon.setTemplateImage(iconToUse.endsWith('Template.png'));
 
+    // Tray 1: N icon — opens Natively context menu on click
     this.tray = new Tray(trayIcon)
-    this.tray.setToolTip('Natively') // This tooltip might also need update if we change global shortcut, but global shortcut is removed.
+    this.tray.setToolTip('Natively')
     this.updateTrayMenu();
-
-    // Left-click: toggle calendar popup
-    this.tray.on('click', () => {
-      CalendarMenuBarHelper.toggle(this.tray!);
-    });
-    // Right-click: show the utility context menu (Show Natively, Screenshot, Quit)
-    this.tray.on('right-click', () => {
-      if (this.trayContextMenu) {
-        this.tray!.popUpContextMenu(this.trayContextMenu);
-      }
-    });
-    // Double-click: open main window directly
     this.tray.on('double-click', () => {
-      CalendarMenuBarHelper.close();
       this.centerAndShowWindow();
+    });
+
+    // Tray 2: calendar text — shows meeting countdown, opens calendar popup on click
+    const emptyIcon = nativeImage.createEmpty();
+    this.calendarTray = new Tray(emptyIcon);
+    this.calendarTray.setTitle('');
+    this.calendarTray.on('click', () => {
+      CalendarMenuBarHelper.toggle(this.calendarTray!);
     });
 
     this.updateTrayTitle();
@@ -2195,7 +2192,7 @@ export class AppState {
                 title = `${truncate(next.title)} · in ${hrs}h${rem > 0 ? ` ${rem}m` : ''}`;
             }
         }
-        this.tray!.setTitle(title);
+        this.calendarTray?.setTitle(title);
     }).catch(() => {});
   }
 
@@ -2273,12 +2270,7 @@ export class AppState {
       }
     ])
 
-    // Store menu for right-click popup (not set as context menu — that would
-    // auto-open on left-click on macOS, conflicting with the calendar popup).
-    this.trayContextMenu = contextMenu;
-    if (this.tray) {
-      this.tray.setContextMenu(null);
-    }
+    this.tray?.setContextMenu(contextMenu);
   }
 
   public hideTray(): void {
@@ -2289,6 +2281,10 @@ export class AppState {
     if (this.tray) {
       this.tray.destroy();
       this.tray = null;
+    }
+    if (this.calendarTray) {
+      this.calendarTray.destroy();
+      this.calendarTray = null;
     }
   }
 
