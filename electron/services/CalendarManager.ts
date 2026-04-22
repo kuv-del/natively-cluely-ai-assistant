@@ -433,12 +433,11 @@ export class CalendarManager extends EventEmitter {
     private async fetchEventsInternal(): Promise<CalendarEvent[]> {
         if (!this.accessToken) return [];
 
-        // Range: now → end of next business day (so 2 business days total).
-        // Friday → today + Monday. Saturday → Monday + Tuesday.
+        // Range: now → 7 days from now (flat 7-day window for menu bar).
         const now = new Date();
-        const next = nextBusinessDay(now);
-        const endOfNext = new Date(next);
-        endOfNext.setHours(23, 59, 59, 999);
+        const endOfWindow = new Date(now);
+        endOfWindow.setDate(endOfWindow.getDate() + 7);
+        endOfWindow.setHours(23, 59, 59, 999);
 
         try {
             const response = await axios.get('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
@@ -447,7 +446,7 @@ export class CalendarManager extends EventEmitter {
                 },
                 params: {
                     timeMin: now.toISOString(),
-                    timeMax: endOfNext.toISOString(),
+                    timeMax: endOfWindow.toISOString(),
                     singleEvents: true,
                     orderBy: 'startTime'
                 }
