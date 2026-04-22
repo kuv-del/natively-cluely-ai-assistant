@@ -153,6 +153,7 @@ import { CropperWindowHelper } from "./CropperWindowHelper"
 import { ScriptHelperWindowHelper } from "./ScriptHelperWindowHelper"
 import { ScreenshotHelper } from "./ScreenshotHelper"
 import { KeybindManager } from "./services/KeybindManager"
+import { CalendarManager } from "./services/CalendarManager"
 import { ProcessingHelper } from "./ProcessingHelper"
 
 import { IntelligenceManager } from "./IntelligenceManager"
@@ -224,6 +225,7 @@ export class AppState {
   private ragManager: RAGManager | null = null
   private knowledgeOrchestrator: any = null
   private tray: Tray | null = null
+  private trayTitleInterval: ReturnType<typeof setInterval> | null = null
   private updateAvailable: boolean = false
   private disguiseMode: 'terminal' | 'settings' | 'activity' | 'none' = 'none'
 
@@ -2146,6 +2148,42 @@ export class AppState {
     this.tray.on('double-click', () => {
       this.centerAndShowWindow()
     })
+
+    this.updateTrayTitle();
+    if (this.trayTitleInterval) clearInterval(this.trayTitleInterval);
+    this.trayTitleInterval = setInterval(() => this.updateTrayTitle(), 30_000);
+  }
+
+  public updateTrayTitle(): void {
+    if (!this.tray) return;
+    const calMgr = CalendarManager.getInstance();
+    calMgr.getUpcomingEvents().then(events => {
+        if (!this.tray) return;
+        const now = Date.now();
+        const current = events.find(e =>
+            new Date(e.startTime).getTime() <= now && new Date(e.endTime).getTime() > now
+        );
+        const next = events.find(e => new Date(e.startTime).getTime() > now);
+
+        const truncate = (title: string) =>
+            title.length > 28 ? title.slice(0, 28) + '…' : title;
+
+        let title = '';
+        if (current) {
+            const mins = Math.round((new Date(current.endTime).getTime() - now) / 60000);
+            title = `${truncate(current.title)} · ending ${mins}m`;
+        } else if (next) {
+            const mins = Math.round((new Date(next.startTime).getTime() - now) / 60000);
+            if (mins < 60) {
+                title = `${truncate(next.title)} · in ${mins}m`;
+            } else {
+                const hrs = Math.floor(mins / 60);
+                const rem = mins % 60;
+                title = `${truncate(next.title)} · in ${hrs}h${rem > 0 ? ` ${rem}m` : ''}`;
+            }
+        }
+        this.tray!.setTitle(title);
+    }).catch(() => {});
   }
 
   public updateTrayMenu() {
@@ -2226,6 +2264,10 @@ export class AppState {
   }
 
   public hideTray(): void {
+    if (this.trayTitleInterval) {
+      clearInterval(this.trayTitleInterval);
+      this.trayTitleInterval = null;
+    }
     if (this.tray) {
       this.tray.destroy();
       this.tray = null;
