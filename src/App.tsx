@@ -31,6 +31,7 @@ import { analytics } from "./lib/analytics/analytics.service"
 import { ErrorBoundary } from "./components/ErrorBoundary"
 import MeetingPopup from './components/MeetingPopup'
 import ModesSettings from "./components/settings/ModesSettings"
+import CalendarMenuBar from './components/CalendarMenuBar'
 
 const queryClient = new QueryClient()
 
@@ -42,9 +43,18 @@ const App: React.FC = () => {
   const isCropperWindow = new URLSearchParams(window.location.search).get('window') === 'cropper';
   const isScriptHelperWindow = new URLSearchParams(window.location.search).get('window') === 'script-helper';
   const isMeetingPopupWindow = new URLSearchParams(window.location.search).get('window') === 'meeting-popup';
+  const isCalendarMenubarWindow = new URLSearchParams(window.location.search).get('window') === 'calendar-menubar';
 
   // Default to launcher if not specified (dev mode safety)
-  const isDefault = !isSettingsWindow && !isOverlayWindow && !isModelSelectorWindow && !isCropperWindow && !isScriptHelperWindow && !isMeetingPopupWindow;
+  const isDefault = !isSettingsWindow && !isOverlayWindow && !isModelSelectorWindow && !isCropperWindow && !isScriptHelperWindow && !isMeetingPopupWindow && !isCalendarMenubarWindow;
+
+  if (isCalendarMenubarWindow) {
+    return (
+      <QueryClientProvider client={queryClient}>
+        <CalendarMenuBar />
+      </QueryClientProvider>
+    );
+  }
 
   if (isCropperWindow) {
     const Cropper = React.lazy(() => import('./components/Cropper'));
