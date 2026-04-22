@@ -227,6 +227,7 @@ export class AppState {
   private knowledgeOrchestrator: any = null
   private tray: Tray | null = null
   private trayTitleInterval: ReturnType<typeof setInterval> | null = null
+  private trayContextMenu: Menu | null = null
   private updateAvailable: boolean = false
   private disguiseMode: 'terminal' | 'settings' | 'activity' | 'none' = 'none'
 
@@ -2145,9 +2146,15 @@ export class AppState {
     this.tray.setToolTip('Natively') // This tooltip might also need update if we change global shortcut, but global shortcut is removed.
     this.updateTrayMenu();
 
-    // Single click: toggle calendar popup
+    // Left-click: toggle calendar popup
     this.tray.on('click', () => {
       CalendarMenuBarHelper.toggle(this.tray!);
+    });
+    // Right-click: show the utility context menu (Show Natively, Screenshot, Quit)
+    this.tray.on('right-click', () => {
+      if (this.trayContextMenu) {
+        this.tray!.popUpContextMenu(this.trayContextMenu);
+      }
     });
     // Double-click: open main window directly
     this.tray.on('double-click', () => {
@@ -2266,7 +2273,12 @@ export class AppState {
       }
     ])
 
-    this.tray.setContextMenu(contextMenu)
+    // Store menu for right-click popup (not set as context menu — that would
+    // auto-open on left-click on macOS, conflicting with the calendar popup).
+    this.trayContextMenu = contextMenu;
+    if (this.tray) {
+      this.tray.setContextMenu(null);
+    }
   }
 
   public hideTray(): void {
