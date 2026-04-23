@@ -69,6 +69,28 @@ function format12HourTime(hour: number): string {
   return `${hour - 12} PM`;
 }
 
+const AM_OUT_PHRASES = ['am out', 'morning meeting block'];
+const PM_OUT_PHRASES = ['pm out'];
+
+function computeTimeRange(events: CalendarEvent[]): { startHour: number; endHour: number } {
+  const timed = events.filter(e => !e.isAllDay);
+  if (timed.length === 0) return { startHour: 7, endHour: 21 };
+
+  const startCandidates = timed
+    .filter(e => !AM_OUT_PHRASES.some(p => (e.title || '').toLowerCase().includes(p)))
+    .map(e => new Date(e.startTime).getHours());
+  const endCandidates = timed
+    .filter(e => !PM_OUT_PHRASES.some(p => (e.title || '').toLowerCase().includes(p)))
+    .map(e => Math.ceil((new Date(e.endTime).getHours() + new Date(e.endTime).getMinutes() / 60)));
+
+  const startHour = startCandidates.length ? Math.max(0, Math.min(...startCandidates)) : 7;
+  const endHour   = endCandidates.length ? Math.min(24, Math.max(...endCandidates)) : 21;
+
+  // Safety: ensure at least a 4-hour window
+  if (endHour - startHour < 4) return { startHour: Math.max(0, startHour - 1), endHour: startHour + 4 };
+  return { startHour, endHour };
+}
+
 const TZ_COLUMNS: Array<{ label: string; tz: string }> = [
   { label: 'PST', tz: 'America/Los_Angeles' },
   { label: 'EST', tz: 'America/New_York' },
@@ -228,8 +250,13 @@ export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
     return groups;
   };
 
+  // Compute dynamic time range
+  const { startHour, endHour } = computeTimeRange(events);
+  const hourCount = endHour - startHour + 1;
+  const totalHeightPx = hourCount * 48;
+
   return (
-    <div style={{ borderRadius: 12, border: `1px solid ${v3.borderLight}`, background: v3.surface, overflow: 'hidden', display: 'flex', flexDirection: 'column', height: '100%', fontFamily: v3.fontSans }}>
+    <div style={{ borderRadius: 12, border: `1px solid ${v3.borderLight}`, background: 'transparent', overflow: 'hidden', display: 'flex', flexDirection: 'column', height: '100%', fontFamily: v3.fontSans }}>
       {/* Header */}
       <div style={{ borderBottom: `1px solid ${v3.borderLight}`, padding: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: v3.bg }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
@@ -286,16 +313,8 @@ export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
         </div>
       </div>
 
-      {/* Loading State */}
-      {loading && (
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: v3.textMuted }}>
-          <span style={{ fontSize: 14 }}>Loading…</span>
-        </div>
-      )}
-
-      {/* Grid */}
-      {!loading && (
-        <div style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
+      {/* Grid — Always Render Scaffold */}
+      <div style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column', position: 'relative' }}>
           {/* Day Headers */}
           <div style={{ display: 'flex', position: 'sticky', top: 0, zIndex: 10 }}>
             <div style={{ width: 50, flexShrink: 0, background: v3.bg }}></div>
@@ -359,7 +378,7 @@ export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
           <div style={{ display: 'flex', flex: 1 }}>
             {/* Time Axis */}
             <div style={{ width: 50, flexShrink: 0, borderRight: `1px solid ${v3.borderLight}`, background: v3.bg }}>
-              {Array.from({ length: 15 }).map((_, idx) => (
+              {Array.from({ length: hourCount }).map((_, idx) => (
                 <div
                   key={idx}
                   style={{
@@ -373,7 +392,7 @@ export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
                     paddingTop: 2,
                   }}
                 >
-                  {format12HourTime(idx + 7)}
+                  {format12HourTime(startHour + idx)}
                 </div>
               ))}
             </div>
@@ -390,7 +409,7 @@ export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
                     background: v3.bg,
                   }}
                 >
-                  {Array.from({ length: 15 }).map((_, idx) => (
+                  {Array.from({ length: hourCount }).map((_, idx) => (
                     <div
                       key={idx}
                       style={{
@@ -404,7 +423,7 @@ export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
                         paddingTop: 2,
                       }}
                     >
-                      {hourInTz(idx + 7, tz, weekStart)}
+                      {hourInTz(startHour + idx, tz, weekStart)}
                     </div>
                   ))}
                 </div>
@@ -423,12 +442,12 @@ export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
                     flex: 1,
                     borderRight: `1px solid ${v3.borderLight}`,
                     position: 'relative',
-                    minHeight: '672px',
+                    minHeight: `${totalHeightPx}px`,
                     background: v3.bg,
                   }}
                 >
                   {/* Hour Grid Lines */}
-                  {Array.from({ length: 15 }).map((_, idx) => (
+                  {Array.from({ length: hourCount }).map((_, idx) => (
                     <div
                       key={idx}
                       style={{
@@ -445,13 +464,13 @@ export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
                   {Array.from(overlapGroups.values()).map((groupEvents) => {
                     const groupSize = groupEvents.length;
                     return groupEvents.map((event, eventIdx) => {
-                      const startDate = new Date(event.startTime);
-                      const endDate = new Date(event.endTime);
-                      const startHour = startDate.getHours();
-                      const startMinute = startDate.getMinutes();
-                      const durationMins = (endDate.getTime() - startDate.getTime()) / 60000;
+                      const eventStartDate = new Date(event.startTime);
+                      const eventEndDate = new Date(event.endTime);
+                      const eventStartHour = eventStartDate.getHours();
+                      const eventStartMinute = eventStartDate.getMinutes();
+                      const durationMins = (eventEndDate.getTime() - eventStartDate.getTime()) / 60000;
 
-                      const topPx = (startHour - 7) * 48 + (startMinute / 60) * 48;
+                      const topPx = (eventStartHour - startHour) * 48 + (eventStartMinute / 60) * 48;
                       const heightPx = Math.max((durationMins / 60) * 48, 22);
                       const guestStatus = getGuestStatus(event);
                       const bgColor = mutedColorFor(event.colorId, event.colorHex);
@@ -507,12 +526,12 @@ export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
                               boxSizing: 'border-box',
                             }}
                           >
-                            <div style={{ fontSize: 11, fontWeight: 600, color: v3.dark, lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            <div style={{ fontSize: 11, fontWeight: 600, color: v3.dark, lineHeight: 1.2, whiteSpace: 'normal', wordBreak: 'break-word', overflow: 'hidden' }}>
                               {rsvpIcon && <span>{rsvpIcon} </span>}
                               {titleLine}
                             </div>
                             {showCompany && (
-                              <div style={{ fontSize: 10, color: v3.textMuted, lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              <div style={{ fontSize: 10, color: v3.textMuted, lineHeight: 1.2, whiteSpace: 'normal', wordBreak: 'break-word', overflow: 'hidden' }}>
                                 {companyLine}
                               </div>
                             )}
@@ -528,6 +547,7 @@ export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
                                 fontWeight: 700,
                                 letterSpacing: 0.3,
                                 textTransform: 'uppercase',
+                                whiteSpace: 'nowrap',
                               }}>
                                 {pillLabel}
                               </div>
@@ -600,15 +620,14 @@ export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
               </div>
             </div>
           )}
-        </div>
-      )}
 
-      {/* Empty State */}
-      {!loading && timedEvents.length === 0 && allDayEvents.length === 0 && (
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: v3.textMuted }}>
-          <span style={{ fontSize: 14 }}>No events this week</span>
+          {/* Empty State Overlay */}
+          {timedEvents.length === 0 && allDayEvents.length === 0 && (
+            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: v3.textMuted, pointerEvents: 'none' }}>
+              <span style={{ fontSize: 14 }}>No events this week</span>
+            </div>
+          )}
         </div>
-      )}
     </div>
   );
 };

@@ -342,7 +342,10 @@ const DealDetails: React.FC<DealDetailsProps> = ({ contactId, onBack }) => {
                             </button>
 
                             {/* Page title */}
-                            <h1 className="text-3xl font-bold text-text-primary tracking-tight mb-2">
+                            <h1
+                                className="text-3xl font-bold text-text-primary tracking-tight mb-2"
+                                style={{ fontFamily: '"Playfair Display", "Times New Roman", serif', fontWeight: 600, letterSpacing: '-0.02em' }}
+                            >
                                 {loading ? (
                                     <span className="opacity-40">Loading…</span>
                                 ) : (
@@ -398,25 +401,34 @@ const DealDetails: React.FC<DealDetailsProps> = ({ contactId, onBack }) => {
                     </div>
 
                     {/* Tab strip */}
-                    <div className="flex items-center justify-between mb-8">
-                        <div className={`p-1 rounded-xl inline-flex items-center gap-0.5 ${isLight ? 'bg-[#E5E5EA] border border-black/[0.04]' : 'bg-[#121214] border border-white/[0.08]'}`}>
+                    <div className="flex items-center justify-between mb-8 -mx-8 px-8 py-3" style={{ background: '#EEEDE9' }}>
+                        <div className="flex gap-2">
                             {AVAILABLE_TABS.map((tab) => (
                                 <button
                                     key={tab}
                                     onClick={() => setActiveTab(tab)}
-                                    className={`
-                                        relative px-3 py-1 text-[13px] font-medium rounded-lg transition-all duration-200 z-10
-                                        ${activeTab === tab ? (isLight ? 'text-black' : 'text-[#E9E9E9]') : `${isLight ? 'text-text-secondary' : 'text-text-tertiary'} hover:text-text-primary`}
-                                    `}
+                                    style={{
+                                        background: activeTab === tab ? '#1B1B1B' : 'transparent',
+                                        color: activeTab === tab ? '#FFFFFF' : 'rgba(27,27,27,0.6)',
+                                        borderRadius: 999,
+                                        padding: '6px 16px',
+                                        fontWeight: activeTab === tab ? 600 : 400,
+                                        fontSize: 13,
+                                        border: 'none',
+                                        cursor: 'pointer',
+                                        transition: 'background-color 0.2s, color 0.2s',
+                                    }}
+                                    onMouseEnter={(e) => {
+                                        if (activeTab !== tab) {
+                                            (e.currentTarget as HTMLButtonElement).style.background = '#E5E3DD';
+                                        }
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        if (activeTab !== tab) {
+                                            (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
+                                        }
+                                    }}
                                 >
-                                    {activeTab === tab && (
-                                        <motion.div
-                                            layoutId="dealDetailsActiveTabBackground"
-                                            className={`absolute inset-0 rounded-lg -z-10 shadow-sm ${isLight ? 'bg-white' : 'bg-[#3A3A3C]'}`}
-                                            initial={false}
-                                            transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-                                        />
-                                    )}
                                     {TAB_LABELS[tab]}
                                 </button>
                             ))}

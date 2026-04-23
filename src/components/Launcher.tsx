@@ -909,14 +909,16 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onO
                                             </div>
                                         </motion.button>
                                     </div>
-
-                                    {/* 2. Week View — replaces former hero widgets (backlog 1.22) */}
-                                    <WeekView
-                                        isLight={isLight}
-                                        onEventClick={(ev) => handleOpenUpcomingMeeting(ev)}
-                                    />
                                 </div>
                             </section>
+
+                            {/* Week View — Full Width */}
+                            <div className="px-4 shrink-0">
+                                <WeekView
+                                    isLight={isLight}
+                                    onEventClick={(ev) => handleOpenUpcomingMeeting(ev)}
+                                />
+                            </div>
 
                             {/* BOTTOM SECTION: Black Background (Scrollable content) */}
                             <main className="flex-1 overflow-y-auto custom-scrollbar bg-bg-primary">

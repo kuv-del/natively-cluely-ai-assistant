@@ -71,10 +71,10 @@ const MatriaDetails: React.FC<MatriaDetailsProps> = ({ event, onBack }) => {
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       className="flex flex-col h-full overflow-hidden"
-      style={{ background: v3.bg, fontFamily: v3.fontSans }}
+      style={{ background: v3.surface, fontFamily: v3.fontSans }}
     >
       {/* Header */}
-      <div className="px-8 pt-6 pb-4" style={{ borderBottom: `1px solid ${v3.border}` }}>
+      <div className="px-8 pt-6 pb-4" style={{ background: v3.surface }}>
         <button
           onClick={onBack}
           className="flex items-center gap-2 text-sm hover:opacity-70 transition-opacity mb-4"
@@ -99,7 +99,7 @@ const MatriaDetails: React.FC<MatriaDetailsProps> = ({ event, onBack }) => {
           >
             Matria
           </span>
-          <h1 style={{ fontSize: 28, fontWeight: 700, color: v3.dark, letterSpacing: '-0.02em', margin: 0 }}>
+          <h1 style={{ fontSize: 28, fontWeight: 700, color: v3.dark, letterSpacing: '-0.02em', margin: 0, fontFamily: v3.fontSerif }}>
             {contactName} — {company}
           </h1>
         </div>
@@ -112,17 +112,31 @@ const MatriaDetails: React.FC<MatriaDetailsProps> = ({ event, onBack }) => {
       </div>
 
       {/* Tab strip */}
-      <div className="px-8 flex gap-1" style={{ borderBottom: `1px solid ${v3.border}` }}>
+      <div className="flex gap-2 px-8 py-3" style={{ background: v3.surface }}>
         {AVAILABLE_TABS.map(key => (
           <button
             key={key}
             onClick={() => setTab(key)}
-            className="py-3 px-4 text-sm transition-colors"
             style={{
-              color: tab === key ? v3.dark : v3.textMuted,
-              fontWeight: tab === key ? 700 : 500,
-              borderBottom: tab === key ? `2px solid ${v3.dark}` : '2px solid transparent',
-              marginBottom: -1,
+              background: tab === key ? v3.dark : 'transparent',
+              color: tab === key ? '#FFFFFF' : v3.textMuted,
+              borderRadius: 999,
+              padding: '6px 16px',
+              fontWeight: tab === key ? 600 : 400,
+              fontSize: 13,
+              border: 'none',
+              cursor: 'pointer',
+              transition: 'background-color 0.2s, color 0.2s',
+            }}
+            onMouseEnter={(e) => {
+              if (tab !== key) {
+                (e.currentTarget as HTMLButtonElement).style.background = v3.surfaceHover;
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (tab !== key) {
+                (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
+              }
             }}
           >
             {TAB_LABELS[key]}
@@ -132,7 +146,7 @@ const MatriaDetails: React.FC<MatriaDetailsProps> = ({ event, onBack }) => {
 
       {/* Body */}
       <div className="flex-1 overflow-y-auto px-8 py-6" style={{ background: v3.surface }}>
-        <div className="max-w-3xl mx-auto">
+        <div className="max-w-3xl mx-auto" style={{ background: v3.bg, borderRadius: 8, padding: 16 }}>
           {tab === 'summary' && (
             <div style={{ color: v3.dark }}>
               <p className="text-sm" style={{ color: v3.textMuted, fontStyle: 'italic', fontFamily: v3.fontSerif }}>
