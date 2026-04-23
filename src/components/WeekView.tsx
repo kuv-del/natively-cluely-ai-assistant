@@ -132,7 +132,14 @@ export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [hourPx, setHourPx] = useState(48);
+  const [currentTime, setCurrentTime] = useState(new Date());
   const gridContainerRef = React.useRef<HTMLDivElement>(null);
+  const timeGridRef = React.useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const interval = setInterval(() => setCurrentTime(new Date()), 60000);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     setLoading(true);
@@ -147,26 +154,20 @@ export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
       .catch(() => setLoading(false));
   }, [weekStart, mode]);
 
-  // Dynamic hour height based on container size
+  // Dynamic hour height — observe the time grid itself so no manual offset math is needed
   useEffect(() => {
-    if (!gridContainerRef.current) return;
+    if (!timeGridRef.current) return;
 
     const resizeObserver = new ResizeObserver(() => {
-      const containerHeight = gridContainerRef.current?.clientHeight ?? 0;
-      if (containerHeight === 0) return;
-
+      const h = timeGridRef.current?.clientHeight ?? 0;
+      if (h === 0) return;
       const { startHour, endHour } = computeTimeRange(events);
-      const hourCount = endHour - startHour + 1;
-      const HOUR_PX_MIN = 24;
-      const stripHeightPx = events.filter(e => e.isAllDay && !e.isBlock).length > 0
-        ? Math.max(1, events.filter(e => e.isAllDay && !e.isBlock).length) * 20 + 4
-        : 0;
-      const availableHeight = containerHeight - 50 - stripHeightPx - 16; // header, all-day strip, padding
-      const computed = Math.max(HOUR_PX_MIN, Math.floor(availableHeight / hourCount));
+      const hourCount = endHour - startHour;
+      const computed = Math.max(24, Math.floor(h / hourCount));
       setHourPx(computed);
     });
 
-    resizeObserver.observe(gridContainerRef.current);
+    resizeObserver.observe(timeGridRef.current);
     return () => resizeObserver.disconnect();
   }, [events]);
 
@@ -287,8 +288,16 @@ export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
 
   // Compute dynamic time range
   const { startHour, endHour } = computeTimeRange(events);
-  const hourCount = endHour - startHour + 1;
+  const hourCount = endHour - startHour;
   const totalHeightPx = hourCount * hourPx;
+
+  // Is the viewed week the current week?
+  const isViewingCurrentWeek = (() => {
+    const weekEndDate = new Date(weekStart);
+    weekEndDate.setDate(weekEndDate.getDate() + 6);
+    weekEndDate.setHours(23, 59, 59, 999);
+    return currentTime >= weekStart && currentTime <= weekEndDate;
+  })();
 
   return (
     <div style={{ borderRadius: 12, border: `1px solid ${v3.borderLight}`, background: 'transparent', overflow: 'hidden', display: 'flex', flexDirection: 'column', height: '100%', fontFamily: v3.fontSans, width: '100%' }}>
@@ -351,7 +360,7 @@ export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
       {/* Grid — Always Render Scaffold */}
       <div ref={gridContainerRef} style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', position: 'relative', width: '100%' }}>
           {/* Day Headers */}
-          <div style={{ display: 'flex', position: 'sticky', top: 0, zIndex: 10, background: 'transparent', borderBottom: `1px solid ${v3.borderLight}` }}>
+          <div style={{ display: 'flex', alignItems: 'stretch', position: 'sticky', top: 0, zIndex: 10, background: 'transparent', borderBottom: `1px solid ${v3.borderLight}` }}>
             {/* Timezone Column Headers */}
             <div style={{ display: 'flex', flexShrink: 0 }}>
               {TZ_COLUMNS.map(({ label }) => (
@@ -362,13 +371,15 @@ export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
                     flexShrink: 0,
                     borderRight: `1px solid ${v3.borderLight}`,
                     background: v3.bg,
-                    padding: 8,
-                    textAlign: 'center',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
                     fontSize: 10,
                     fontWeight: 700,
                     letterSpacing: 0.4,
                     textTransform: 'uppercase',
                     color: v3.textMuted,
+                    minHeight: 44,
                   }}
                 >
                   {label}
@@ -383,26 +394,34 @@ export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
                   style={{
                     flex: 1,
                     minWidth: 0,
-                    padding: 8,
                     borderRight: `1px solid ${v3.borderLight}`,
-                    textAlign: 'center',
                     fontSize: 12,
                     fontWeight: 500,
                     background: v3.bg,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    minHeight: 44,
                   }}
                 >
-                  <div style={{ color: v3.dark }}>{dayLabels[dayDate.getDay()]}</div>
                   <div
                     style={{
-                      marginTop: 4,
-                      padding: isToday ? '4px 8px' : 0,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 4,
+                      padding: isToday ? '3px 10px' : 0,
                       background: isToday ? v3.dark : 'transparent',
-                      color: isToday ? v3.bg : v3.dark,
                       borderRadius: isToday ? 12 : 0,
-                      fontWeight: isToday ? 600 : 400,
                     }}
                   >
-                    {dayDate.getDate()}
+                    <span style={{ color: isToday ? v3.bg : v3.dark, fontWeight: isToday ? 600 : 400 }}>
+                      {dayLabels[dayDate.getDay()]}
+                    </span>
+                    <span style={{ color: isToday ? `${v3.bg}99` : v3.textMuted, fontSize: 10 }}>|</span>
+                    <span style={{ color: isToday ? v3.bg : v3.dark, fontWeight: isToday ? 600 : 400 }}>
+                      {dayDate.getDate()}
+                    </span>
                   </div>
                 </div>
               );
@@ -410,7 +429,7 @@ export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
           </div>
 
           {/* Time Grid */}
-          <div style={{ display: 'flex', flex: 1, overflow: 'auto', width: '100%', overflowY: hourPx === 24 ? 'auto' : 'hidden' }}>
+          <div ref={timeGridRef} style={{ display: 'flex', flex: 1, overflow: 'hidden', width: '100%' }}>
             {/* Timezone Columns (serve as time axis) */}
             <div style={{ display: 'flex', flexShrink: 0 }}>
               {TZ_COLUMNS.map(({ label, tz }) => (
@@ -535,6 +554,8 @@ export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
                       const pillLabel = displayedEventType && displayedEventType in pillLabelMap ? pillLabelMap[displayedEventType as keyof typeof pillLabelMap] : '';
                       const rsvpIcon = guestStatus !== 'none' ? RSVP_ICON[guestStatus] : '';
 
+                      const isPast = isViewingCurrentWeek && new Date(event.endTime) < currentTime;
+
                       return (
                         <div
                           key={event.id}
@@ -548,6 +569,8 @@ export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
                             width: `${(1 / groupSize) * 100}%`,
                             padding: 0,
                             zIndex: 20,
+                            opacity: isPast ? 0.35 : 1,
+                            transition: 'opacity 0.3s',
                           }}
                         >
                           <div
@@ -595,29 +618,44 @@ export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
                     });
                   })}
 
-                  {/* Block Boundary Lines */}
-                  {blockEvents
+                  {/* Current Time Indicator — today's column only */}
+                  {isViewingCurrentWeek && daysInWeek[dayIdx].getTime() === today.getTime() && (() => {
+                    const nowFrac = currentTime.getHours() + currentTime.getMinutes() / 60;
+                    if (nowFrac < startHour || nowFrac > endHour) return null;
+                    const topPx = (nowFrac - startHour) * hourPx;
+                    return (
+                      <div
+                        style={{
+                          position: 'absolute',
+                          left: 0,
+                          right: 0,
+                          top: `${topPx}px`,
+                          zIndex: 25,
+                          pointerEvents: 'none',
+                          display: 'flex',
+                          alignItems: 'center',
+                        }}
+                      >
+                        <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#E53E3E', flexShrink: 0, marginLeft: -4 }} />
+                        <div style={{ flex: 1, height: 2, background: '#E53E3E' }} />
+                      </div>
+                    );
+                  })()}
+
+                  {/* Block Boundary Lines — weekdays (Mon-Fri) only */}
+                  {dayIdx >= 1 && dayIdx <= 5 && blockEvents
                     .filter(block => {
+                      if (block.blockKind !== 'am_out' && block.blockKind !== 'pm_out') return false;
                       const blockDate = new Date(block.startTime);
                       blockDate.setHours(0, 0, 0, 0);
                       return blockDate.getTime() === daysInWeek[dayIdx].getTime();
                     })
                     .map((block) => {
-                      if (block.blockKind === 'other_block') return null; // Skip rendering
-
                       const blockStart = new Date(block.startTime);
                       const blockEnd = new Date(block.endTime);
-
-                      let topPx: number;
-                      if (block.blockKind === 'am_out' || block.blockKind === 'sat_out' || block.blockKind === 'sun_out') {
-                        // Line at END of block
-                        topPx = (blockEnd.getHours() - startHour) * hourPx + (blockEnd.getMinutes() / 60) * hourPx;
-                      } else if (block.blockKind === 'pm_out') {
-                        // Line at BEGINNING of block
-                        topPx = (blockStart.getHours() - startHour) * hourPx + (blockStart.getMinutes() / 60) * hourPx;
-                      } else {
-                        return null;
-                      }
+                      const topPx = block.blockKind === 'am_out'
+                        ? (blockEnd.getHours() - startHour) * hourPx + (blockEnd.getMinutes() / 60) * hourPx
+                        : (blockStart.getHours() - startHour) * hourPx + (blockStart.getMinutes() / 60) * hourPx;
 
                       return (
                         <div
