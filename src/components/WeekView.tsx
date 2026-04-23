@@ -925,7 +925,6 @@ export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
                       const isBanana = event.colorId === '5';
                       const titleLine = isBanana ? event.title : (event.attendeeContactName || event.title);
                       const companyLine = event.attendeeCompany;
-                      const showPill = displayedEventType && displayedEventType !== 'other' && heightPx >= 36;
                       const showCompany = !isBanana && companyLine && event.calendarKind !== 'family' && heightPx >= 50;
 
                       const pillColors = (() => {
@@ -942,6 +941,7 @@ export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
                       })();
 
                       const pillLabel = displayedEventType && displayedEventType !== 'other' ? (EVENT_TYPE_LABELS[displayedEventType] || '') : '';
+                      const showPill = !!(pillLabel);
                       const rsvpIcon = guestStatus !== 'none' ? RSVP_ICON[guestStatus] : '';
 
                       const isPast = isViewingCurrentWeek && new Date(event.endTime) < currentTime;
