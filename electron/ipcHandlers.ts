@@ -2440,7 +2440,7 @@ export function initializeIpcHandlers(appState: AppState): void {
   // ── Menu bar calendar popup ──────────────────────────────────────────────
   safeHandle("menubar:get-events", async () => {
     const { CalendarManager } = require('./services/CalendarManager');
-    const events = await CalendarManager.getInstance().getUpcomingEvents();
+    const events = await CalendarManager.getInstance().getUpcomingEvents(true);
     // Filter out all-day events and blocks from menu bar
     return events.filter((e: any) => !e.isAllDay && !e.isBlock);
   });

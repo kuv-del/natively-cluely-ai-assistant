@@ -150,6 +150,10 @@ export class CalendarManager extends EventEmitter {
     private remindedEventIds: Set<string> = new Set();
     private calendarColorMap: Map<string, { hex: string; summary: string }> = new Map(); // calendarId → { hex, summary }
 
+    private lastFetchTime: number = 0;
+    private cachedEvents: CalendarEvent[] = [];
+    private readonly CACHE_TTL_MS = 30000; // 30-second cache
+
     private constructor() {
         super();
         // Tokens loaded in init() to ensure safeStorage is ready
@@ -476,13 +480,22 @@ export class CalendarManager extends EventEmitter {
     public async getUpcomingEvents(force: boolean = false): Promise<CalendarEvent[]> {
         if (!this.isConnected || !this.accessToken) return [];
 
+        // Return cached events if available and not forced
+        const now = Date.now();
+        if (!force && now - this.lastFetchTime < this.CACHE_TTL_MS) {
+            console.log(`[CalendarManager] getUpcomingEvents: using cache (${now - this.lastFetchTime}ms old)`);
+            return this.cachedEvents;
+        }
+
         // Check expiry
         if (this.expiryDate && Date.now() >= this.expiryDate - 60000) {
             await this.refreshAccessToken();
         }
 
         const events = await this.fetchEventsInternal();
-        console.log(`[CalendarManager] getUpcomingEvents: ${events.length} events returned`);
+        this.cachedEvents = events;
+        this.lastFetchTime = Date.now();
+        console.log(`[CalendarManager] getUpcomingEvents: ${events.length} events returned (fresh fetch)`);
         if (events.length > 0) {
             const next = events.find(e => new Date(e.startTime).getTime() > Date.now());
             console.log(`[CalendarManager] Next upcoming: ${next ? `${next.title} at ${next.startTime}` : 'none'}`);
