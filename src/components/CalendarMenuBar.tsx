@@ -6,7 +6,7 @@ interface CalendarEvent {
     startTime: string;
     endTime: string;
     colorHex: string | null;
-    attendees: Array<{ email: string; responseStatus: string }>;
+    attendees: Array<{ email: string; responseStatus: string; self: boolean }>;
 }
 
 function formatTime(dateStr: string): string {
@@ -30,9 +30,21 @@ function getDayLabel(dateStr: string): string {
     return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
-function hasDeclinedAttendee(event: CalendarEvent): boolean {
-    return event.attendees.some(a => a.responseStatus === 'declined');
+// Returns the most important RSVP status across all external (non-self) attendees.
+// Priority: declined > needsAction > tentative > accepted > none (no external guests)
+function getGuestStatus(event: CalendarEvent): 'declined' | 'needsAction' | 'accepted' | 'none' {
+    const guests = event.attendees.filter(a => !a.self);
+    if (guests.length === 0) return 'none';
+    if (guests.some(a => a.responseStatus === 'declined')) return 'declined';
+    if (guests.some(a => a.responseStatus === 'needsAction')) return 'needsAction';
+    return 'accepted';
 }
+
+const RSVP_ICON: Record<string, string> = {
+    declined: '⚠️',
+    needsAction: '□',
+    accepted: '☑',
+};
 
 const EventRow: React.FC<{
     event: CalendarEvent;
@@ -40,8 +52,9 @@ const EventRow: React.FC<{
     onClick: (id: string) => void;
 }> = ({ event, isNext = false, onClick }) => {
     const [hovered, setHovered] = React.useState(false);
-    const declined = hasDeclinedAttendee(event);
+    const guestStatus = getGuestStatus(event);
     const barColor = event.colorHex || '#4A90D9';
+    const rsvpIcon = guestStatus !== 'none' ? RSVP_ICON[guestStatus] : null;
 
     return (
         <div
@@ -51,16 +64,18 @@ const EventRow: React.FC<{
             style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: 7,
-                padding: '5px 16px',
+                gap: 6,
+                padding: '3px 16px',
                 cursor: 'pointer',
                 borderRadius: 4,
                 background: hovered ? 'rgba(0,0,0,0.06)' : 'transparent',
                 transition: 'background 0.1s',
             }}
         >
-            <div style={{ width: 3, height: 16, borderRadius: 2, background: barColor, flexShrink: 0 }} />
-            {declined && <span style={{ fontSize: 11 }}>⚠️</span>}
+            <div style={{ width: 3, height: 14, borderRadius: 2, background: barColor, flexShrink: 0 }} />
+            {rsvpIcon && (
+                <span style={{ fontSize: 10, flexShrink: 0, lineHeight: 1 }}>{rsvpIcon}</span>
+            )}
             <span style={{
                 fontSize: 13,
                 color: '#1a1a1a',
@@ -77,7 +92,7 @@ const EventRow: React.FC<{
 };
 
 const SectionHeader: React.FC<{ label: string }> = ({ label }) => (
-    <div style={{ padding: '8px 16px 3px', color: '#888', fontSize: 12, fontWeight: 500 }}>
+    <div style={{ padding: '5px 16px 2px', color: '#888', fontSize: 11, fontWeight: 500 }}>
         {label}
     </div>
 );

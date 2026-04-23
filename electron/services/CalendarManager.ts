@@ -49,6 +49,7 @@ export interface EventAttendee {
     email: string;
     name: string | null;
     responseStatus: 'accepted' | 'declined' | 'tentative' | 'needsAction';
+    self: boolean; // true = this is the authenticated user
 }
 
 export interface CalendarEvent {
@@ -91,6 +92,7 @@ export class CalendarManager extends EventEmitter {
     private isConnected: boolean = false;
     private updateInterval: NodeJS.Timeout | null = null;
     private remindedEventIds: Set<string> = new Set();
+    private calendarColorMap: Map<string, string> = new Map(); // calendarId → hex color
 
     private constructor() {
         super();
@@ -419,6 +421,25 @@ export class CalendarManager extends EventEmitter {
         return events;
     }
 
+    private async fetchCalendarList(): Promise<void> {
+        if (!this.accessToken) return;
+        try {
+            const response = await axios.get('https://www.googleapis.com/calendar/v3/users/me/calendarList', {
+                headers: { Authorization: `Bearer ${this.accessToken}` },
+                params: { maxResults: 50 }
+            });
+            this.calendarColorMap.clear();
+            for (const cal of (response.data.items || [])) {
+                // backgroundColor is the hex Google Calendar stores; colorId is a legacy key.
+                const hex = cal.backgroundColor || (cal.colorId && GCAL_COLOR_MAP[cal.colorId]) || null;
+                if (hex) this.calendarColorMap.set(cal.id, hex);
+            }
+            console.log(`[CalendarManager] Loaded ${this.calendarColorMap.size} calendars`);
+        } catch (e) {
+            console.warn('[CalendarManager] Failed to fetch calendar list:', e);
+        }
+    }
+
     private async fetchEventsInternal(): Promise<CalendarEvent[]> {
         if (!this.accessToken) return [];
 
@@ -428,49 +449,60 @@ export class CalendarManager extends EventEmitter {
         endOfWindow.setDate(endOfWindow.getDate() + 7);
         endOfWindow.setHours(23, 59, 59, 999);
 
-        try {
-            const response = await axios.get('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
-                headers: {
-                    Authorization: `Bearer ${this.accessToken}`
-                },
-                params: {
-                    timeMin: now.toISOString(),
-                    timeMax: endOfWindow.toISOString(),
-                    singleEvents: true,
-                    orderBy: 'startTime'
-                }
-            });
+        // Fetch calendar list first time (so we have calendar-level colors).
+        if (this.calendarColorMap.size === 0) {
+            await this.fetchCalendarList();
+        }
 
-            const items = response.data.items || [];
+        const params = {
+            timeMin: now.toISOString(),
+            timeMax: endOfWindow.toISOString(),
+            singleEvents: true,
+            orderBy: 'startTime',
+        };
 
-            return items
-                .filter((item: any) => {
-                    // Filter: >= 5 mins, no all-day
-                    if (!item.start?.dateTime || !item.end?.dateTime) return false; // All-day events have .date instead of .dateTime
+        // Query all calendars in the list (deduped by event ID at the end).
+        const calendarIds = this.calendarColorMap.size > 0
+            ? Array.from(this.calendarColorMap.keys())
+            : ['primary'];
 
-                    const start = new Date(item.start.dateTime).getTime();
-                    const end = new Date(item.end.dateTime).getTime();
-                    const durationMins = (end - start) / 60000;
+        const allEvents: CalendarEvent[] = [];
+        const seen = new Set<string>();
 
-                    return durationMins >= 5;
-                })
-                .map((item: any): CalendarEvent | null => {
+        for (const calendarId of calendarIds) {
+            try {
+                const response = await axios.get(
+                    `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`,
+                    { headers: { Authorization: `Bearer ${this.accessToken}` }, params }
+                );
+                const calendarFallbackColor = this.calendarColorMap.get(calendarId) || null;
+
+                const items = response.data.items || [];
+                for (const item of items) {
+                    if (seen.has(item.id)) continue;
+
+                    if (!item.start?.dateTime || !item.end?.dateTime) continue;
+                    const durationMins = (new Date(item.end.dateTime).getTime() - new Date(item.start.dateTime).getTime()) / 60000;
+                    if (durationMins < 5) continue;
+
                     const link = this.resolveMeetingLink(item);
-                    // Only include events that have a meeting link (Zoom / Meet / etc).
-                    // Personal / non-meeting calendar events without a join link are
-                    // skipped — Natively only cares about callable meetings.
-                    if (!link) return null;
+                    if (!link) continue;
 
+                    // Event-level color overrides calendar color.
                     const colorId: string | null = item.colorId ?? null;
-                    const colorHex = colorId && GCAL_COLOR_MAP[colorId] ? GCAL_COLOR_MAP[colorId] : null;
+                    const colorHex = (colorId && GCAL_COLOR_MAP[colorId]) || calendarFallbackColor || null;
+
                     const attendees: EventAttendee[] = Array.isArray(item.attendees)
                         ? item.attendees.map((a: any) => ({
                             email: a.email || '',
                             name: a.displayName || null,
                             responseStatus: (a.responseStatus || 'needsAction') as EventAttendee['responseStatus'],
+                            self: a.self === true,
                         }))
                         : [];
-                    return {
+
+                    seen.add(item.id);
+                    allEvents.push({
                         id: item.id,
                         title: item.summary || '(No Title)',
                         description: item.description || null,
@@ -482,14 +514,14 @@ export class CalendarManager extends EventEmitter {
                         colorId,
                         colorHex,
                         source: 'google',
-                    };
-                })
-                .filter((e: CalendarEvent | null): e is CalendarEvent => e !== null);
-
-        } catch (error) {
-            console.error('[CalendarManager] Failed to fetch events:', error);
-            return [];
+                    });
+                }
+            } catch (error) {
+                console.warn(`[CalendarManager] Failed to fetch events for calendar ${calendarId}:`, error);
+            }
         }
+
+        return allEvents.sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
     }
 
     // ── Two-way sync: write helpers ──────────────────────────────────────────
