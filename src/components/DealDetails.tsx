@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useResolvedTheme } from '../hooks/useResolvedTheme';
+import { useV3Tokens } from '../hooks/useV3Tokens';
 import { ArrowLeft, Link, FileText } from 'lucide-react';
 import { motion } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
@@ -261,6 +262,7 @@ const MeetingIndicator: React.FC<MeetingIndicatorProps> = ({ data }) => {
 
 const DealDetails: React.FC<DealDetailsProps> = ({ contactId, onBack }) => {
     const isLight = useResolvedTheme() === 'light';
+    const v3 = useV3Tokens();
     const [data, setData] = useState<DealDetailsResponse | null>(null);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<TabKey>('summary');
@@ -321,7 +323,7 @@ const DealDetails: React.FC<DealDetailsProps> = ({ contactId, onBack }) => {
     // ─── Render ───────────────────────────────────────────────────────────────
 
     return (
-        <div className="h-full w-full flex flex-col bg-bg-secondary text-text-secondary font-sans overflow-hidden">
+        <div className="h-full w-full flex flex-col text-text-secondary font-sans overflow-hidden" style={{ background: v3.bg }}>
             <main className="flex-1 overflow-y-auto custom-scrollbar">
                 <motion.div
                     initial={{ opacity: 0, y: 10 }}
@@ -404,15 +406,15 @@ const DealDetails: React.FC<DealDetailsProps> = ({ contactId, onBack }) => {
                     <div className="mb-8">
                         <div
                             className="inline-flex items-center gap-2"
-                            style={{ background: '#FDFDFA', padding: '6px 16px', borderRadius: 16 }}
+                            style={{ background: v3.card, padding: '6px 16px', borderRadius: 16 }}
                         >
                             {AVAILABLE_TABS.map((tab) => (
                                 <button
                                     key={tab}
                                     onClick={() => setActiveTab(tab)}
                                     style={{
-                                        background: activeTab === tab ? '#1B1B1B' : 'transparent',
-                                        color: activeTab === tab ? '#FFFFFF' : 'rgba(27,27,27,0.6)',
+                                        background: activeTab === tab ? v3.dark : 'transparent',
+                                        color: activeTab === tab ? (v3.dark === '#1B1B1B' ? '#FFFFFF' : '#1B1B1B') : v3.textMuted,
                                         borderRadius: 999,
                                         padding: '6px 16px',
                                         fontWeight: activeTab === tab ? 600 : 400,

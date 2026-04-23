@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowLeft } from 'lucide-react';
+import { useV3Tokens } from '../hooks/useV3Tokens';
 
 interface KateEventLite {
   id: string;
@@ -29,18 +30,6 @@ const TAB_LABELS: Record<TabKey, string> = {
 
 const AVAILABLE_TABS: TabKey[] = ['overview', 'notes', 'files', 'history'];
 
-const v3 = {
-  fontSans: '"Nunito Sans", -apple-system, sans-serif',
-  fontSerif: '"Playfair Display", "Times New Roman", serif',
-  bg: '#FFFFFF',
-  surface: '#FDFDFA',
-  surfaceHover: '#ECEAE4',
-  card: '#F7F5F0',
-  dark: '#1B1B1B',
-  textMuted: 'rgba(27,27,27,0.6)',
-  border: '#BFBFBF',
-};
-
 function pillForType(eventType: string | undefined): { label: string; bg: string; fg: string } | null {
   switch (eventType) {
     case 'appointment': return { label: 'Appt', bg: '#6F87B5', fg: '#FFFFFF' };
@@ -61,6 +50,7 @@ function formatTimeRange(startIso: string, endIso: string): string {
 }
 
 const KateDetails: React.FC<KateDetailsProps> = ({ event, onBack }) => {
+  const v3 = useV3Tokens();
   const [tab, setTab] = useState<TabKey>('overview');
   const pill = pillForType(event.eventType);
 
@@ -129,7 +119,7 @@ const KateDetails: React.FC<KateDetailsProps> = ({ event, onBack }) => {
       <div className="px-8 pt-3 pb-1">
         <div
           className="inline-flex items-center gap-2"
-          style={{ background: '#FDFDFA', padding: '6px 16px', borderRadius: 16 }}
+          style={{ background: v3.card, padding: '6px 16px', borderRadius: 16 }}
         >
         {AVAILABLE_TABS.map(key => (
           <button

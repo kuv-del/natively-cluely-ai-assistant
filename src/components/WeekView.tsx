@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useV3Tokens } from '../hooks/useV3Tokens';
 
 interface CalendarEvent {
   id: string;
@@ -24,20 +25,6 @@ interface WeekViewProps {
   isLight: boolean;
   onEventClick: (event: CalendarEvent) => void;
 }
-
-// v3 Design System
-const v3 = {
-  fontSans: '"Nunito Sans", -apple-system, BlinkMacSystemFont, sans-serif',
-  fontSerif: '"Playfair Display", "Times New Roman", serif',
-  bg: '#FDFDFA',
-  surface: '#FDFDFA',
-  surfaceHover: '#ECEAE4',
-  card: '#F7F5F0',
-  dark: '#1B1B1B',
-  textMuted: 'rgba(27,27,27,0.6)',
-  border: '#BFBFBF',
-  borderLight: 'rgba(27,27,27,0.08)',
-};
 
 // Muted GCAL Colors
 const MUTED_GCAL: Record<string, string> = {
@@ -131,6 +118,7 @@ const RSVP_ICON: Record<string, string> = {
 };
 
 export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
+  const v3 = useV3Tokens();
   const [weekStart, setWeekStart] = useState<Date>(() => {
     const today = new Date();
     const day = today.getDay();
@@ -143,6 +131,8 @@ export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
   const [mode, setMode] = useState<'clean' | 'everything'>('clean');
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [hourPx, setHourPx] = useState(48);
+  const gridContainerRef = React.useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -156,6 +146,29 @@ export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
       })
       .catch(() => setLoading(false));
   }, [weekStart, mode]);
+
+  // Dynamic hour height based on container size
+  useEffect(() => {
+    if (!gridContainerRef.current) return;
+
+    const resizeObserver = new ResizeObserver(() => {
+      const containerHeight = gridContainerRef.current?.clientHeight ?? 0;
+      if (containerHeight === 0) return;
+
+      const { startHour, endHour } = computeTimeRange(events);
+      const hourCount = endHour - startHour + 1;
+      const HOUR_PX_MIN = 24;
+      const stripHeightPx = events.filter(e => e.isAllDay && !e.isBlock).length > 0
+        ? Math.max(1, events.filter(e => e.isAllDay && !e.isBlock).length) * 20 + 4
+        : 0;
+      const availableHeight = containerHeight - 50 - stripHeightPx - 16; // header, all-day strip, padding
+      const computed = Math.max(HOUR_PX_MIN, Math.floor(availableHeight / hourCount));
+      setHourPx(computed);
+    });
+
+    resizeObserver.observe(gridContainerRef.current);
+    return () => resizeObserver.disconnect();
+  }, [events]);
 
   const weekEnd = new Date(weekStart);
   weekEnd.setDate(weekEnd.getDate() + 6);
@@ -275,7 +288,7 @@ export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
   // Compute dynamic time range
   const { startHour, endHour } = computeTimeRange(events);
   const hourCount = endHour - startHour + 1;
-  const totalHeightPx = hourCount * 48;
+  const totalHeightPx = hourCount * hourPx;
 
   return (
     <div style={{ borderRadius: 12, border: `1px solid ${v3.borderLight}`, background: 'transparent', overflow: 'hidden', display: 'flex', flexDirection: 'column', height: '100%', fontFamily: v3.fontSans, width: '100%' }}>
@@ -336,7 +349,7 @@ export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
       </div>
 
       {/* Grid — Always Render Scaffold */}
-      <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', position: 'relative', width: '100%' }}>
+      <div ref={gridContainerRef} style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', position: 'relative', width: '100%' }}>
           {/* Day Headers */}
           <div style={{ display: 'flex', position: 'sticky', top: 0, zIndex: 10, background: 'transparent', borderBottom: `1px solid ${v3.borderLight}` }}>
             {/* Timezone Column Headers */}
@@ -397,7 +410,7 @@ export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
           </div>
 
           {/* Time Grid */}
-          <div style={{ display: 'flex', flex: 1, overflow: 'auto', width: '100%' }}>
+          <div style={{ display: 'flex', flex: 1, overflow: 'auto', width: '100%', overflowY: hourPx === 24 ? 'auto' : 'hidden' }}>
             {/* Timezone Columns (serve as time axis) */}
             <div style={{ display: 'flex', flexShrink: 0 }}>
               {TZ_COLUMNS.map(({ label, tz }) => (
@@ -414,7 +427,7 @@ export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
                     <div
                       key={idx}
                       style={{
-                        height: 48,
+                        height: hourPx,
                         borderBottom: `1px solid ${v3.borderLight}`,
                         fontSize: 9,
                         color: v3.textMuted,
@@ -468,8 +481,8 @@ export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
                         position: 'absolute',
                         width: '100%',
                         borderBottom: `1px solid ${v3.borderLight}`,
-                        top: `${idx * 48}px`,
-                        height: '48px',
+                        top: `${idx * hourPx}px`,
+                        height: `${hourPx}px`,
                       }}
                     ></div>
                   ))}
@@ -484,8 +497,8 @@ export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
                       const eventStartMinute = eventStartDate.getMinutes();
                       const durationMins = (eventEndDate.getTime() - eventStartDate.getTime()) / 60000;
 
-                      const topPx = (eventStartHour - startHour) * 48 + (eventStartMinute / 60) * 48;
-                      const heightPx = Math.max((durationMins / 60) * 48, 22);
+                      const topPx = (eventStartHour - startHour) * hourPx + (eventStartMinute / 60) * hourPx;
+                      const heightPx = Math.max((durationMins / 60) * hourPx, 22);
                       const guestStatus = getGuestStatus(event);
                       // Task E: Matria warm greige override
                       const bgColor = event.calendarKind === 'matria' ? '#B8AC97' : mutedColorFor(event.colorId, event.colorHex);
@@ -598,10 +611,10 @@ export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
                       let topPx: number;
                       if (block.blockKind === 'am_out' || block.blockKind === 'sat_out' || block.blockKind === 'sun_out') {
                         // Line at END of block
-                        topPx = (blockEnd.getHours() - startHour) * 48 + (blockEnd.getMinutes() / 60) * 48;
+                        topPx = (blockEnd.getHours() - startHour) * hourPx + (blockEnd.getMinutes() / 60) * hourPx;
                       } else if (block.blockKind === 'pm_out') {
                         // Line at BEGINNING of block
-                        topPx = (blockStart.getHours() - startHour) * 48 + (blockStart.getMinutes() / 60) * 48;
+                        topPx = (blockStart.getHours() - startHour) * hourPx + (blockStart.getMinutes() / 60) * hourPx;
                       } else {
                         return null;
                       }

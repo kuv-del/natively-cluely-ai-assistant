@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowLeft } from 'lucide-react';
+import { useV3Tokens } from '../hooks/useV3Tokens';
 
 interface MatriaEventLite {
   id: string;
@@ -32,18 +33,8 @@ const TAB_LABELS: Record<TabKey, string> = {
 
 const AVAILABLE_TABS: TabKey[] = ['summary', 'profile', 'grade', 'meetings', 'prep'];
 
-const v3 = {
-  fontSans: '"Nunito Sans", -apple-system, sans-serif',
-  fontSerif: '"Playfair Display", "Times New Roman", serif',
-  bg: '#FFFFFF',
-  surface: '#FDFDFA',
-  surfaceHover: '#ECEAE4',
-  card: '#F7F5F0',
-  dark: '#1B1B1B',
-  textMuted: 'rgba(27,27,27,0.6)',
-  border: '#BFBFBF',
-  beige: '#D9C28A',
-};
+// Brand color that stays hardcoded
+const MATRIA_BEIGE = '#D9C28A';
 
 function formatTimeRange(startIso: string, endIso: string): string {
   const start = new Date(startIso);
@@ -54,6 +45,7 @@ function formatTimeRange(startIso: string, endIso: string): string {
 }
 
 const MatriaDetails: React.FC<MatriaDetailsProps> = ({ event, onBack }) => {
+  const v3 = useV3Tokens();
   const [tab, setTab] = useState<TabKey>('summary');
   const contactName = event.attendeeContactName || event.title;
   const company = event.attendeeCompany || 'Matria';
@@ -90,7 +82,7 @@ const MatriaDetails: React.FC<MatriaDetailsProps> = ({ event, onBack }) => {
               display: 'inline-block',
               padding: '4px 12px',
               borderRadius: 999,
-              background: v3.beige,
+              background: MATRIA_BEIGE,
               color: v3.dark,
               fontSize: 11,
               fontWeight: 700,
@@ -116,7 +108,7 @@ const MatriaDetails: React.FC<MatriaDetailsProps> = ({ event, onBack }) => {
       <div className="px-8 pt-3 pb-1">
         <div
           className="inline-flex items-center gap-2"
-          style={{ background: '#FDFDFA', padding: '6px 16px', borderRadius: 16 }}
+          style={{ background: v3.card, padding: '6px 16px', borderRadius: 16 }}
         >
         {AVAILABLE_TABS.map(key => (
           <button
