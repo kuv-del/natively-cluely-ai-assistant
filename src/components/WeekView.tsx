@@ -30,7 +30,7 @@ const v3 = {
   fontSans: '"Nunito Sans", -apple-system, BlinkMacSystemFont, sans-serif',
   fontSerif: '"Playfair Display", "Times New Roman", serif',
   bg: '#FFFFFF',
-  surface: '#F4F3EF',
+  surface: '#FDFDFA',
   surfaceHover: '#ECEAE4',
   card: '#F7F5F0',
   dark: '#1B1B1B',

@@ -400,9 +400,12 @@ const DealDetails: React.FC<DealDetailsProps> = ({ contactId, onBack }) => {
                         </div>
                     </div>
 
-                    {/* Tab strip */}
-                    <div className="flex items-center justify-between mb-8 -mx-8 px-8 py-3" style={{ background: '#F7F5F0' }}>
-                        <div className="flex gap-2">
+                    {/* Tab strip — fit-content rounded pill row */}
+                    <div className="mb-8">
+                        <div
+                            className="inline-flex items-center gap-2"
+                            style={{ background: '#FDFDFA', padding: '6px 16px', borderRadius: 16 }}
+                        >
                             {AVAILABLE_TABS.map((tab) => (
                                 <button
                                     key={tab}

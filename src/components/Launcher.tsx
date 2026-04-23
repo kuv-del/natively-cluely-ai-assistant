@@ -580,7 +580,7 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onO
     };
 
     return (
-        <div className="h-full w-full flex flex-col bg-bg-primary text-text-primary font-sans overflow-hidden selection:bg-accent-secondary/30">
+        <div className="h-full w-full flex flex-col text-text-primary font-sans overflow-hidden selection:bg-accent-secondary/30" style={{ background: '#FDFDFA' }}>
             {/* 1. Header (Static) */}
             <header className="relative w-full h-[40px] shrink-0 flex items-center justify-between pl-0 drag-region select-none bg-bg-secondary border-b border-border-subtle z-[200]">
                 {/* Left: Spacing for Traffic Lights + Navigation Arrows */}
@@ -740,7 +740,7 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onO
                             {/* Top Section is now effectively static due to parent flex col */}
 
                             {/* TOP SECTION: Grey Background (Scrolls with content) */}
-                            <section className={`${isLight ? 'bg-bg-primary' : 'bg-bg-elevated'} px-8 pt-6 pb-8 border-b border-border-subtle shrink-0`}>
+                            <section className="px-8 pt-6 pb-8 border-b border-border-subtle shrink-0" style={{ background: '#FDFDFA' }}>
                                 <div className="max-w-4xl mx-auto space-y-6">
                                     {/* 1.5. Hero Header (Title + Controls + CTA) */}
                                     <div className="flex items-center justify-between">
@@ -854,7 +854,7 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onO
                             </div>
 
                             {/* BOTTOM SECTION: Black Background (Scrollable content) */}
-                            <main className="flex-1 overflow-y-auto custom-scrollbar bg-bg-primary">
+                            <main className="flex-1 overflow-y-auto custom-scrollbar" style={{ background: '#FDFDFA' }}>
                                 <section className="px-8 py-8 min-h-full">
                                     <div className="max-w-4xl mx-auto space-y-8">
 

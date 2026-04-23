@@ -33,7 +33,7 @@ const v3 = {
   fontSans: '"Nunito Sans", -apple-system, sans-serif',
   fontSerif: '"Playfair Display", "Times New Roman", serif',
   bg: '#FFFFFF',
-  surface: '#F4F3EF',
+  surface: '#FDFDFA',
   surfaceHover: '#ECEAE4',
   card: '#F7F5F0',
   dark: '#1B1B1B',
@@ -125,8 +125,12 @@ const KateDetails: React.FC<KateDetailsProps> = ({ event, onBack }) => {
         </div>
       </div>
 
-      {/* Tab strip */}
-      <div className="flex gap-2 px-8 py-3" style={{ background: v3.surface }}>
+      {/* Tab strip — fit-content rounded pill row */}
+      <div className="px-8 pt-3 pb-1">
+        <div
+          className="inline-flex items-center gap-2"
+          style={{ background: '#FDFDFA', padding: '6px 16px', borderRadius: 16 }}
+        >
         {AVAILABLE_TABS.map(key => (
           <button
             key={key}
@@ -156,6 +160,7 @@ const KateDetails: React.FC<KateDetailsProps> = ({ event, onBack }) => {
             {TAB_LABELS[key]}
           </button>
         ))}
+        </div>
       </div>
 
       {/* Body */}
