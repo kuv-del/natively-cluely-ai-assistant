@@ -12,6 +12,8 @@ import GlobalChatOverlay from './GlobalChatOverlay';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FeatureSpotlight } from './FeatureSpotlight';
 import { WeekView } from './WeekView';
+import MatriaDetails from './MatriaDetails';
+import KateDetails from './KateDetails';
 import { analytics } from '../lib/analytics/analytics.service'; // Added analytics import
 import { useShortcuts } from '../hooks/useShortcuts';
 import { useResolvedTheme } from '../hooks/useResolvedTheme';
@@ -107,6 +109,10 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onO
 
     // DealDetails navigation state
     const [selectedDealContactId, setSelectedDealContactId] = useState<string | null>(null);
+
+    // Matria and Kate event navigation states
+    const [matriaEvent, setMatriaEvent] = useState<any>(null);
+    const [kateEvent, setKateEvent] = useState<any>(null);
 
     // Global search state (for AI chat overlay)
     const [isGlobalChatOpen, setIsGlobalChatOpen] = useState(false);
@@ -433,6 +439,18 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onO
     const handleOpenUpcomingMeeting = async (event: any) => {
         setForwardMeeting(null);
 
+        // Route by calendarKind: matria → MatriaDetails, family → KateDetails, otherwise scalable flow
+        const kind = (event && (event as any).calendarKind) as 'scalable'|'matria'|'family'|'other'|undefined;
+        if (kind === 'matria') {
+            setMatriaEvent(event);
+            return;
+        }
+        if (kind === 'family') {
+            setKateEvent(event);
+            return;
+        }
+
+        // 'scalable' or 'other' → existing flow
         // Try to resolve contact → open DealDetails if found
         if (event.id && window.electronAPI?.convexGetMeetingProfile) {
             try {
@@ -522,6 +540,14 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onO
 
     const handleBackFromDeal = () => {
         setSelectedDealContactId(null);
+    };
+
+    const handleBackFromMatria = () => {
+        setMatriaEvent(null);
+    };
+
+    const handleBackFromKate = () => {
+        setKateEvent(null);
     };
 
     const handleForward = () => {
@@ -647,7 +673,29 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onO
                     <div className={`absolute inset-1 border-2 border-dashed rounded-2xl pointer-events-none z-[100] ${isLight ? 'border-black/15' : 'border-white/20'}`} />
                 )}
                 <AnimatePresence mode="wait">
-                    {selectedDealContactId ? (
+                    {matriaEvent ? (
+                        <motion.div
+                            key="matria-details"
+                            className="flex-1 overflow-hidden"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            transition={{ duration: 0.15 }}
+                        >
+                            <MatriaDetails event={matriaEvent} onBack={handleBackFromMatria} />
+                        </motion.div>
+                    ) : kateEvent ? (
+                        <motion.div
+                            key="kate-details"
+                            className="flex-1 overflow-hidden"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            transition={{ duration: 0.15 }}
+                        >
+                            <KateDetails event={kateEvent} onBack={handleBackFromKate} />
+                        </motion.div>
+                    ) : selectedDealContactId ? (
                         <motion.div
                             key="deal-details"
                             className="flex-1 overflow-hidden"

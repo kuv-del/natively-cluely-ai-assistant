@@ -65,6 +65,13 @@ export interface CalendarEvent {
     colorId: string | null;    // Google Calendar color id ("1"–"11"), null = calendar default
     colorHex: string | null;   // Resolved hex color for UI rendering
     source: 'google';
+    calendarId: string;        // the calendar this event was fetched from
+    calendarSummary: string;   // display name from calendarList
+    calendarKind: 'scalable' | 'matria' | 'family' | 'other';
+    eventType: 'demo' | 'discovery' | 'followup' | 'appointment' | 'school' | 'task' | 'fun' | 'fyi' | 'other';
+    attendeeContactName: string | null;  // first non-self attendee's parsed name
+    attendeeCompany: string | null;      // first non-self attendee's email-domain-derived company
+    isAllDay: boolean;         // true when start.date is set instead of start.dateTime
 }
 
 // Google Calendar event color palette (from /calendar/v3/colors API).
@@ -92,13 +99,44 @@ export class CalendarManager extends EventEmitter {
         'do not book', 'no booking', 'no bookings',
         'morning meeting block',
     ];
+
+    private static detectCalendarKind(summary: string, calendarId: string): CalendarEvent['calendarKind'] {
+        const s = (summary + ' ' + calendarId).toLowerCase();
+        if (s.includes('matria')) return 'matria';
+        if (s.includes('family') || s.includes('schnetzerfamily')) return 'family';
+        if (s.includes('scalable') || s.includes('kate.schnetzer')) return 'scalable';
+        return 'other';
+    }
+
+    private static detectEventType(title: string): CalendarEvent['eventType'] {
+        const t = title.toLowerCase();
+        if (/\bdemo\b/.test(t)) return 'demo';
+        if (/\b(discovery|disc)\b/.test(t)) return 'discovery';
+        if (/\b(follow.?up|fup|f\.?u\.?)\b/.test(t)) return 'followup';
+        if (/\b(appointment|appt)\b/.test(t)) return 'appointment';
+        if (/\bschool\b/.test(t)) return 'school';
+        if (/\btask\b/.test(t)) return 'task';
+        if (/\bfun\b/.test(t)) return 'fun';
+        if (/\bfyi\b/.test(t)) return 'fyi';
+        return 'other';
+    }
+
+    private static parseAttendeeContact(attendees: EventAttendee[]): { name: string | null; company: string | null } {
+        const guest = attendees.find(a => !a.self && a.email);
+        if (!guest) return { name: null, company: null };
+        const name = guest.name || (guest.email.split('@')[0].replace(/[._-]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase()));
+        const domain = guest.email.split('@')[1] || '';
+        const tld = domain.split('.').slice(-2)[0] || '';
+        const company = tld ? tld.charAt(0).toUpperCase() + tld.slice(1) : null;
+        return { name, company };
+    }
     private accessToken: string | null = null;
     private refreshToken: string | null = null;
     private expiryDate: number | null = null;
     private isConnected: boolean = false;
     private updateInterval: NodeJS.Timeout | null = null;
     private remindedEventIds: Set<string> = new Set();
-    private calendarColorMap: Map<string, string> = new Map(); // calendarId → hex color
+    private calendarColorMap: Map<string, { hex: string; summary: string }> = new Map(); // calendarId → { hex, summary }
 
     private constructor() {
         super();
@@ -461,7 +499,7 @@ export class CalendarManager extends EventEmitter {
                 // Only include calendars Kate owns — excludes shared/teammates calendars.
                 if (cal.accessRole !== 'owner' && !cal.primary) continue;
                 const hex = cal.backgroundColor || (cal.colorId && GCAL_COLOR_MAP[cal.colorId]) || null;
-                this.calendarColorMap.set(cal.id, hex ?? '#4A90D9');
+                this.calendarColorMap.set(cal.id, { hex: hex ?? '#4A90D9', summary: cal.summary || cal.id });
             }
             console.log(`[CalendarManager] Loaded ${this.calendarColorMap.size} calendars`);
         } catch (e) {
@@ -508,15 +546,34 @@ export class CalendarManager extends EventEmitter {
                     `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`,
                     { headers: { Authorization: `Bearer ${this.accessToken}` }, params }
                 );
-                const calendarFallbackColor = this.calendarColorMap.get(calendarId) || null;
+                const calendarInfo = this.calendarColorMap.get(calendarId) || { hex: '#4A90D9', summary: calendarId };
+                const calendarSummary = calendarInfo.summary;
+                const calendarFallbackColor = calendarInfo.hex;
+                const calendarKind = CalendarManager.detectCalendarKind(calendarSummary, calendarId);
 
                 const items = response.data.items || [];
                 for (const item of items) {
                     if (seen.has(item.id)) continue;
 
-                    if (!item.start?.dateTime || !item.end?.dateTime) continue;
-                    const durationMins = (new Date(item.end.dateTime).getTime() - new Date(item.start.dateTime).getTime()) / 60000;
-                    if (durationMins < 5) continue;
+                    // Determine if all-day or timed event
+                    const isAllDay = !item.start?.dateTime;
+                    let startTime: string;
+                    let endTime: string;
+                    let durationMins = 0;
+
+                    if (isAllDay) {
+                        // All-day event: use date field and convert to ISO
+                        startTime = item.start.date + 'T00:00:00Z';
+                        endTime = item.end.date + 'T00:00:00Z';
+                    } else {
+                        // Timed event: use dateTime
+                        if (!item.start?.dateTime || !item.end?.dateTime) continue;
+                        startTime = item.start.dateTime;
+                        endTime = item.end.dateTime;
+                        durationMins = (new Date(endTime).getTime() - new Date(startTime).getTime()) / 60000;
+                        // Skip very short timed events (< 5 mins), but allow all-day events
+                        if (durationMins < 5) continue;
+                    }
 
                     // Skip blocked-time / internal events that clutter the menu bar (if filterBlocked is true).
                     const title = (item.summary || '').toLowerCase();
@@ -537,19 +594,29 @@ export class CalendarManager extends EventEmitter {
                         }))
                         : [];
 
+                    const eventType = CalendarManager.detectEventType(item.summary || '');
+                    const { name: attendeeContactName, company: attendeeCompany } = CalendarManager.parseAttendeeContact(attendees);
+
                     seen.add(item.id);
                     allEvents.push({
                         id: item.id,
                         title: item.summary || '(No Title)',
                         description: item.description || null,
-                        startTime: item.start.dateTime,
-                        endTime: item.end.dateTime,
+                        startTime,
+                        endTime,
                         link,
                         location: item.location || null,
                         attendees,
                         colorId,
                         colorHex,
                         source: 'google',
+                        calendarId,
+                        calendarSummary,
+                        calendarKind,
+                        eventType,
+                        attendeeContactName,
+                        attendeeCompany,
+                        isAllDay,
                     });
                 }
             } catch (error) {

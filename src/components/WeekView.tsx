@@ -6,13 +6,53 @@ interface CalendarEvent {
   title: string;
   startTime: string;
   endTime: string;
+  colorId?: string | null;
   colorHex: string | null;
-  attendees: Array<{ email: string; responseStatus: string; self: boolean }>;
+  attendees: Array<{ email: string; responseStatus: string; self: boolean; name?: string | null }>;
+  // New fields (Task #7):
+  calendarKind?: 'scalable' | 'matria' | 'family' | 'other';
+  eventType?: 'demo' | 'discovery' | 'followup' | 'appointment' | 'school' | 'task' | 'fun' | 'fyi' | 'other';
+  attendeeContactName?: string | null;
+  attendeeCompany?: string | null;
+  isAllDay?: boolean;
 }
 
 interface WeekViewProps {
   isLight: boolean;
   onEventClick: (event: CalendarEvent) => void;
+}
+
+// v3 Design System
+const v3 = {
+  fontSans: '"Nunito Sans", -apple-system, BlinkMacSystemFont, sans-serif',
+  fontSerif: '"Playfair Display", "Times New Roman", serif',
+  bg: '#FFFFFF',
+  surface: '#EEEDE9',
+  surfaceHover: '#E5E3DD',
+  dark: '#1B1B1B',
+  textMuted: 'rgba(27,27,27,0.6)',
+  border: '#BFBFBF',
+  borderLight: 'rgba(27,27,27,0.08)',
+};
+
+// Muted GCAL Colors
+const MUTED_GCAL: Record<string, string> = {
+  "1": "#BBB4D6",  // Lavender
+  "2": "#A6BFA0",  // Sage
+  "3": "#B79EC7",  // Grape
+  "4": "#D6928E",  // Flamingo
+  "5": "#D9C28A",  // Banana
+  "6": "#C99B6E",  // Tangerine
+  "7": "#6E9CA0",  // Peacock
+  "8": "#9C9C9C",  // Graphite
+  "9": "#6F87B5",  // Blueberry
+  "10": "#7A9C70", // Basil
+  "11": "#B8625A", // Tomato
+};
+
+function mutedColorFor(colorId: string | null | undefined, fallback: string | null): string {
+  if (colorId && MUTED_GCAL[colorId]) return MUTED_GCAL[colorId];
+  return fallback || '#6F87B5';
 }
 
 function formatTime(dateStr: string): string {
@@ -23,6 +63,26 @@ function formatTime(dateStr: string): string {
   });
 }
 
+function format12HourTime(hour: number): string {
+  if (hour < 12) return `${hour} AM`;
+  if (hour === 12) return '12 PM';
+  return `${hour - 12} PM`;
+}
+
+const TZ_COLUMNS: Array<{ label: string; tz: string }> = [
+  { label: 'PST', tz: 'America/Los_Angeles' },
+  { label: 'EST', tz: 'America/New_York' },
+  { label: 'CST', tz: 'America/Chicago' },
+];
+
+function hourInTz(localHour: number, tz: string, weekStart: Date): string {
+  const d = new Date(weekStart);
+  d.setHours(localHour, 0, 0, 0);
+  const fmt = new Intl.DateTimeFormat('en-US', { hour: 'numeric', hour12: true, timeZone: tz });
+  const formatted = fmt.format(d);
+  return formatted.replace(/[^\d APM]/g, '').trim();
+}
+
 function getGuestStatus(event: CalendarEvent): 'declined' | 'needsAction' | 'accepted' | 'none' {
   const guests = event.attendees.filter(a => !a.self);
   if (guests.length === 0) return 'none';
@@ -31,13 +91,18 @@ function getGuestStatus(event: CalendarEvent): 'declined' | 'needsAction' | 'acc
   return 'accepted';
 }
 
+function daysBetween(start: Date, end: Date): number {
+  const oneDay = 24 * 60 * 60 * 1000;
+  return Math.floor((end.getTime() - start.getTime()) / oneDay);
+}
+
 const RSVP_ICON: Record<string, string> = {
   declined: '⚠️',
   needsAction: '□',
   accepted: '☑',
 };
 
-export const WeekView: React.FC<WeekViewProps> = ({ isLight, onEventClick }) => {
+export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
   const [weekStart, setWeekStart] = useState<Date>(() => {
     const today = new Date();
     const day = today.getDay();
@@ -114,12 +179,20 @@ export const WeekView: React.FC<WeekViewProps> = ({ isLight, onEventClick }) => 
     eventsByDay[idx] = [];
   });
 
+  const timedEvents: CalendarEvent[] = [];
+  const allDayEvents: CalendarEvent[] = [];
+
   events.forEach(event => {
-    const eventDate = new Date(event.startTime);
-    eventDate.setHours(0, 0, 0, 0);
-    const dayIdx = daysInWeek.findIndex(d => d.getTime() === eventDate.getTime());
-    if (dayIdx !== -1) {
-      eventsByDay[dayIdx].push(event);
+    if (event.isAllDay) {
+      allDayEvents.push(event);
+    } else {
+      timedEvents.push(event);
+      const eventDate = new Date(event.startTime);
+      eventDate.setHours(0, 0, 0, 0);
+      const dayIdx = daysInWeek.findIndex(d => d.getTime() === eventDate.getTime());
+      if (dayIdx !== -1) {
+        eventsByDay[dayIdx].push(event);
+      }
     }
   });
 
@@ -156,44 +229,56 @@ export const WeekView: React.FC<WeekViewProps> = ({ isLight, onEventClick }) => 
   };
 
   return (
-    <div className={`rounded-xl border ${isLight ? 'border-border-subtle bg-bg-elevated' : 'border-border-subtle bg-bg-elevated'} overflow-hidden flex flex-col h-full`}>
+    <div style={{ borderRadius: 12, border: `1px solid ${v3.borderLight}`, background: v3.surface, overflow: 'hidden', display: 'flex', flexDirection: 'column', height: '100%', fontFamily: v3.fontSans }}>
       {/* Header */}
-      <div className={`border-b ${isLight ? 'border-border-subtle' : 'border-border-subtle'} p-4 flex items-center justify-between`}>
-        <div className="flex items-center gap-4">
+      <div style={{ borderBottom: `1px solid ${v3.borderLight}`, padding: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: v3.bg }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           <button
             onClick={handlePrev}
-            className={`p-1 rounded transition-colors ${isLight ? 'hover:bg-black/8' : 'hover:bg-white/10'}`}
+            style={{ padding: 8, background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+            onMouseEnter={e => e.currentTarget.style.background = v3.surface}
+            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
           >
-            <ChevronLeft size={20} className="text-text-secondary" />
+            <ChevronLeft size={20} color={v3.textMuted} />
           </button>
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-text-primary">{dateRangeLabel}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 14, fontWeight: 500, color: v3.dark }}>{dateRangeLabel}</span>
             <button
               onClick={handleThisWeek}
-              className={`text-xs px-3 py-1 rounded transition-colors ${isLight ? 'hover:bg-black/8 text-text-secondary' : 'hover:bg-white/10 text-text-secondary'}`}
+              style={{ fontSize: 12, padding: '4px 12px', borderRadius: 6, border: 'none', background: 'transparent', cursor: 'pointer', color: v3.textMuted, transition: 'background 0.2s' }}
+              onMouseEnter={e => e.currentTarget.style.background = v3.surface}
+              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
             >
               This Week
             </button>
           </div>
           <button
             onClick={handleNext}
-            className={`p-1 rounded transition-colors ${isLight ? 'hover:bg-black/8' : 'hover:bg-white/10'}`}
+            style={{ padding: 8, background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+            onMouseEnter={e => e.currentTarget.style.background = v3.surface}
+            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
           >
-            <ChevronRight size={20} className="text-text-secondary" />
+            <ChevronRight size={20} color={v3.textMuted} />
           </button>
         </div>
 
-        {/* Mode Toggle */}
-        <div className={`flex items-center gap-2 p-1 rounded-full ${isLight ? 'bg-bg-secondary' : 'bg-bg-secondary'}`}>
+        {/* Mode Toggle - Pill Style */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: 4, borderRadius: 999, background: v3.surface }}>
           {(['clean', 'everything'] as const).map(m => (
             <button
               key={m}
               onClick={() => setMode(m)}
-              className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${
-                mode === m
-                  ? 'bg-accent-primary text-white'
-                  : `text-text-secondary ${isLight ? 'hover:bg-black/8' : 'hover:bg-white/10'}`
-              }`}
+              style={{
+                padding: '4px 12px',
+                fontSize: 12,
+                fontWeight: 500,
+                borderRadius: 999,
+                border: 'none',
+                cursor: 'pointer',
+                background: mode === m ? v3.dark : 'transparent',
+                color: mode === m ? v3.bg : v3.textMuted,
+                transition: 'all 0.2s',
+              }}
             >
               {m === 'clean' ? 'Clean' : 'Everything'}
             </button>
@@ -203,45 +288,125 @@ export const WeekView: React.FC<WeekViewProps> = ({ isLight, onEventClick }) => 
 
       {/* Loading State */}
       {loading && (
-        <div className={`flex-1 flex items-center justify-center text-text-secondary`}>
-          <span className="text-sm">Loading…</span>
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: v3.textMuted }}>
+          <span style={{ fontSize: 14 }}>Loading…</span>
         </div>
       )}
 
       {/* Grid */}
       {!loading && (
-        <div className="flex-1 overflow-auto flex flex-col">
+        <div style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
           {/* Day Headers */}
-          <div className="flex sticky top-0 z-10">
-            <div className="w-[50px] flex-shrink-0 bg-bg-primary"></div>
+          <div style={{ display: 'flex', position: 'sticky', top: 0, zIndex: 10 }}>
+            <div style={{ width: 50, flexShrink: 0, background: v3.bg }}></div>
+            {/* Timezone Column Headers */}
+            <div style={{ display: 'flex', flexShrink: 0 }}>
+              {TZ_COLUMNS.map(({ label }) => (
+                <div
+                  key={label}
+                  style={{
+                    width: 36,
+                    flexShrink: 0,
+                    borderRight: `1px solid ${v3.borderLight}`,
+                    background: v3.bg,
+                    padding: 8,
+                    textAlign: 'center',
+                    fontSize: 10,
+                    fontWeight: 700,
+                    letterSpacing: 0.4,
+                    textTransform: 'uppercase',
+                    color: v3.textMuted,
+                  }}
+                >
+                  {label}
+                </div>
+              ))}
+            </div>
             {daysInWeek.map((dayDate, idx) => {
               const isToday = dayDate.getTime() === today.getTime();
               return (
                 <div
                   key={idx}
-                  className={`flex-1 p-2 border-r border-border-subtle text-center text-xs font-medium transition-colors ${
-                    isToday
-                      ? `text-accent-primary ${isLight ? 'bg-blue-50' : 'bg-blue-950/20'}`
-                      : 'text-text-secondary'
-                  }`}
+                  style={{
+                    flex: 1,
+                    padding: 8,
+                    borderRight: `1px solid ${v3.borderLight}`,
+                    textAlign: 'center',
+                    fontSize: 12,
+                    fontWeight: 500,
+                    background: v3.bg,
+                  }}
                 >
-                  <div>{dayLabels[dayDate.getDay()]}</div>
-                  <div className={isToday ? 'font-bold' : ''}>{dayDate.getDate()}</div>
+                  <div style={{ color: v3.dark }}>{dayLabels[dayDate.getDay()]}</div>
+                  <div
+                    style={{
+                      marginTop: 4,
+                      padding: isToday ? '4px 8px' : 0,
+                      background: isToday ? v3.dark : 'transparent',
+                      color: isToday ? v3.bg : v3.dark,
+                      borderRadius: isToday ? 12 : 0,
+                      fontWeight: isToday ? 600 : 400,
+                    }}
+                  >
+                    {dayDate.getDate()}
+                  </div>
                 </div>
               );
             })}
           </div>
 
           {/* Time Grid */}
-          <div className="flex flex-1">
+          <div style={{ display: 'flex', flex: 1 }}>
             {/* Time Axis */}
-            <div className="w-[50px] flex-shrink-0 border-r border-border-subtle">
+            <div style={{ width: 50, flexShrink: 0, borderRight: `1px solid ${v3.borderLight}`, background: v3.bg }}>
               {Array.from({ length: 15 }).map((_, idx) => (
                 <div
                   key={idx}
-                  className="h-12 border-b border-border-subtle/50 text-right pr-2 text-[10px] text-text-tertiary leading-none pt-0.5"
+                  style={{
+                    height: 48,
+                    borderBottom: `1px solid ${v3.borderLight}`,
+                    textAlign: 'right',
+                    paddingRight: 8,
+                    fontSize: 10,
+                    color: v3.textMuted,
+                    lineHeight: 1,
+                    paddingTop: 2,
+                  }}
                 >
-                  {idx + 7}:00
+                  {format12HourTime(idx + 7)}
+                </div>
+              ))}
+            </div>
+
+            {/* Timezone Columns */}
+            <div style={{ display: 'flex', flexShrink: 0 }}>
+              {TZ_COLUMNS.map(({ label, tz }) => (
+                <div
+                  key={label}
+                  style={{
+                    width: 36,
+                    flexShrink: 0,
+                    borderRight: `1px solid ${v3.borderLight}`,
+                    background: v3.bg,
+                  }}
+                >
+                  {Array.from({ length: 15 }).map((_, idx) => (
+                    <div
+                      key={idx}
+                      style={{
+                        height: 48,
+                        borderBottom: `1px solid ${v3.borderLight}`,
+                        fontSize: 9,
+                        color: v3.textMuted,
+                        lineHeight: 1,
+                        textAlign: 'right',
+                        paddingRight: 4,
+                        paddingTop: 2,
+                      }}
+                    >
+                      {hourInTz(idx + 7, tz, weekStart)}
+                    </div>
+                  ))}
                 </div>
               ))}
             </div>
@@ -254,15 +419,25 @@ export const WeekView: React.FC<WeekViewProps> = ({ isLight, onEventClick }) => 
               return (
                 <div
                   key={dayIdx}
-                  className={`flex-1 border-r border-border-subtle relative ${dayIdx === daysInWeek.length - 1 ? 'border-r-0' : ''}`}
-                  style={{ minHeight: '672px' }}
+                  style={{
+                    flex: 1,
+                    borderRight: `1px solid ${v3.borderLight}`,
+                    position: 'relative',
+                    minHeight: '672px',
+                    background: v3.bg,
+                  }}
                 >
                   {/* Hour Grid Lines */}
                   {Array.from({ length: 15 }).map((_, idx) => (
                     <div
                       key={idx}
-                      className="absolute w-full border-b border-border-subtle/50"
-                      style={{ top: `${idx * 48}px`, height: '48px' }}
+                      style={{
+                        position: 'absolute',
+                        width: '100%',
+                        borderBottom: `1px solid ${v3.borderLight}`,
+                        top: `${idx * 48}px`,
+                        height: '48px',
+                      }}
                     ></div>
                   ))}
 
@@ -279,43 +454,84 @@ export const WeekView: React.FC<WeekViewProps> = ({ isLight, onEventClick }) => 
                       const topPx = (startHour - 7) * 48 + (startMinute / 60) * 48;
                       const heightPx = Math.max((durationMins / 60) * 48, 22);
                       const guestStatus = getGuestStatus(event);
-                      const bgColor = event.colorHex || '#4A90D9';
+                      const bgColor = mutedColorFor(event.colorId, event.colorHex);
+
+                      // New event card content
+                      const titleLine = event.attendeeContactName || event.title;
+                      const companyLine = event.attendeeCompany;
+                      const showPill = event.eventType && event.eventType !== 'other' && heightPx >= 36;
+                      const showCompany = companyLine && event.calendarKind !== 'family' && heightPx >= 50;
+
+                      const pillColors = (() => {
+                        if (event.calendarKind === 'scalable') return { bg: '#7A9C70', fg: '#FFFFFF' };
+                        if (event.calendarKind === 'matria')   return { bg: '#D9C28A', fg: '#1B1B1B' };
+                        switch (event.eventType) {
+                          case 'appointment': return { bg: '#6F87B5', fg: '#FFFFFF' };
+                          case 'school':      return { bg: '#BBB4D6', fg: '#1B1B1B' };
+                          case 'task':        return { bg: '#C99B6E', fg: '#FFFFFF' };
+                          case 'fun':         return { bg: '#B8625A', fg: '#FFFFFF' };
+                          case 'fyi':         return { bg: '#D9C28A', fg: '#1B1B1B' };
+                          default:            return { bg: '#9C9C9C', fg: '#FFFFFF' };
+                        }
+                      })();
+
+                      const pillLabelMap = { demo: 'Demo', discovery: 'Disc', followup: 'Fup', appointment: 'Appt', school: 'School', task: 'Task', fun: 'Fun', fyi: 'FYI' } as const;
+                      const pillLabel = event.eventType && event.eventType in pillLabelMap ? pillLabelMap[event.eventType as keyof typeof pillLabelMap] : '';
+                      const rsvpIcon = guestStatus !== 'none' ? RSVP_ICON[guestStatus] : '';
 
                       return (
                         <div
                           key={event.id}
                           onClick={() => onEventClick(event)}
-                          className="absolute cursor-pointer z-20 group transition-all"
                           style={{
+                            position: 'absolute',
+                            cursor: 'pointer',
                             top: `${topPx}px`,
                             height: `${heightPx}px`,
                             left: `${(eventIdx / groupSize) * 100}%`,
                             width: `${(1 / groupSize) * 100}%`,
-                            padding: '2px',
+                            padding: 0,
+                            zIndex: 20,
                           }}
                         >
                           <div
-                            className="h-full w-full rounded-md p-1 text-xs text-text-primary overflow-hidden border-l-4 transition-colors group-hover:brightness-110"
                             style={{
-                              backgroundColor: `${bgColor}22`,
-                              borderLeftColor: bgColor,
+                              height: '100%',
+                              width: '100%',
+                              overflow: 'hidden',
+                              background: `${bgColor}30`,
+                              borderLeft: `3px solid ${bgColor}`,
+                              borderRadius: 6,
+                              padding: '3px 6px',
+                              fontFamily: v3.fontSans,
+                              boxSizing: 'border-box',
                             }}
                           >
-                            <div className="flex items-start gap-1 h-full">
-                              {guestStatus !== 'none' && (
-                                <span className="text-[8px] flex-shrink-0 leading-tight">
-                                  {RSVP_ICON[guestStatus]}
-                                </span>
-                              )}
-                              <div className="flex-1 min-w-0">
-                                <div className="text-[9px] font-medium leading-tight whitespace-nowrap">
-                                  {formatTime(event.startTime)}
-                                </div>
-                                <div className="text-[8px] leading-tight truncate text-text-secondary group-hover:text-text-primary">
-                                  {event.title}
-                                </div>
-                              </div>
+                            <div style={{ fontSize: 11, fontWeight: 600, color: v3.dark, lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {rsvpIcon && <span>{rsvpIcon} </span>}
+                              {titleLine}
                             </div>
+                            {showCompany && (
+                              <div style={{ fontSize: 10, color: v3.textMuted, lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                {companyLine}
+                              </div>
+                            )}
+                            {showPill && (
+                              <div style={{
+                                display: 'inline-block',
+                                marginTop: 2,
+                                padding: '1px 6px',
+                                borderRadius: 999,
+                                background: pillColors.bg,
+                                color: pillColors.fg,
+                                fontSize: 9,
+                                fontWeight: 700,
+                                letterSpacing: 0.3,
+                                textTransform: 'uppercase',
+                              }}>
+                                {pillLabel}
+                              </div>
+                            )}
                           </div>
                         </div>
                       );
@@ -325,13 +541,72 @@ export const WeekView: React.FC<WeekViewProps> = ({ isLight, onEventClick }) => 
               );
             })}
           </div>
+
+          {/* All-Day Events Bar */}
+          {allDayEvents.length > 0 && (
+            <div style={{ borderTop: `1px solid ${v3.borderLight}`, padding: 6, maxHeight: 'auto', background: v3.bg }}>
+              <div style={{ display: 'flex' }}>
+                <div style={{ width: 50, flexShrink: 0, fontSize: 10, color: v3.textMuted, paddingRight: 6, textAlign: 'right' }}>
+                  All day
+                </div>
+                {/* Timezone columns spacer */}
+                <div style={{ width: 36 * 3, flexShrink: 0 }}></div>
+                <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
+                  {daysInWeek.map((_, dayIdx) => (
+                    <div key={dayIdx} style={{ position: 'relative', minHeight: 54 }}>
+                      {allDayEvents.map((event, eventIdx) => {
+                        const eventStart = new Date(event.startTime);
+                        const eventEnd = new Date(event.endTime);
+                        eventStart.setHours(0, 0, 0, 0);
+                        eventEnd.setHours(0, 0, 0, 0);
+
+                        const dayOffset = Math.max(0, daysBetween(weekStart, eventStart));
+                        const daySpan = Math.min(7 - dayOffset, Math.max(1, daysBetween(eventStart, eventEnd) + 1));
+
+                        if (dayOffset !== dayIdx) return null;
+
+                        const bgColor = mutedColorFor(event.colorId, event.colorHex);
+                        const titleLine = event.attendeeContactName || event.title;
+
+                        return (
+                          <div
+                            key={event.id}
+                            onClick={() => onEventClick(event)}
+                            style={{
+                              position: 'absolute',
+                              left: 0,
+                              right: 0,
+                              top: `${eventIdx * 18 + 2}px`,
+                              height: 18,
+                              background: bgColor,
+                              color: '#FFFFFF',
+                              padding: '2px 4px',
+                              borderRadius: 4,
+                              fontSize: 11,
+                              fontWeight: 500,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            {titleLine}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
       {/* Empty State */}
-      {!loading && events.length === 0 && (
-        <div className={`flex-1 flex items-center justify-center text-text-secondary`}>
-          <span className="text-sm">No events this week</span>
+      {!loading && timedEvents.length === 0 && allDayEvents.length === 0 && (
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: v3.textMuted }}>
+          <span style={{ fontSize: 14 }}>No events this week</span>
         </div>
       )}
     </div>
