@@ -128,7 +128,7 @@ export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
     return sunday;
   });
 
-  const [mode, setMode] = useState<'clean' | 'everything'>('clean');
+  const [viewMode, setViewMode] = useState<'7' | '5' | '3' | 'agenda'>('7');
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [hourPx, setHourPx] = useState(48);
@@ -141,18 +141,27 @@ export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
     return () => clearInterval(interval);
   }, []);
 
+  // For 3-day mode, always fetch from today's week so events are current
+  const fetchWeekStart = (viewMode === '3' || viewMode === 'agenda') ? (() => {
+    const now = new Date();
+    const diff = now.getDate() - now.getDay();
+    const sun = new Date(now.setDate(diff));
+    sun.setHours(0, 0, 0, 0);
+    return sun;
+  })() : weekStart;
+
   useEffect(() => {
     setLoading(true);
     (window as any).electronAPI?.weekviewGetEvents?.({
-      weekStartIso: weekStart.toISOString(),
-      mode,
+      weekStartIso: fetchWeekStart.toISOString(),
+      mode: 'everything',
     })
       .then((evts: CalendarEvent[]) => {
         setEvents(evts || []);
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  }, [weekStart, mode]);
+  }, [weekStart, viewMode]);
 
   // Dynamic hour height — observe the time grid itself so no manual offset math is needed
   useEffect(() => {
@@ -199,19 +208,38 @@ export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
     setWeekStart(sunday);
   };
 
-  const dateRangeLabel = (() => {
-    const startStr = weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    const endStr = weekEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    return `${startStr} – ${endStr}`;
+  const dayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+  const daysInWeek: Date[] = (() => {
+    const allDays: Date[] = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(weekStart);
+      d.setDate(d.getDate() + i);
+      allDays.push(d);
+    }
+    if (viewMode === '5') return allDays.slice(1, 6); // Mon–Fri
+    if (viewMode === '3' || viewMode === 'agenda') {
+      const anchor = new Date();
+      anchor.setHours(0, 0, 0, 0);
+      return [0, 1, 2].map(n => {
+        const d = new Date(anchor);
+        d.setDate(d.getDate() + n);
+        return d;
+      });
+    }
+    return allDays; // '7': Sun–Sat
   })();
 
-  const dayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  const daysInWeek: Date[] = [];
-  for (let i = 0; i < 7; i++) {
-    const dayDate = new Date(weekStart);
-    dayDate.setDate(dayDate.getDate() + i);
-    daysInWeek.push(dayDate);
-  }
+  const dateRangeLabel = (() => {
+    if (viewMode === '3' || viewMode === 'agenda') {
+      const d0 = daysInWeek[0];
+      const d2 = daysInWeek[2];
+      return `${d0.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${d2.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+    }
+    const startStr = daysInWeek[0].toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const endStr = daysInWeek[daysInWeek.length - 1].toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    return `${startStr} – ${endStr}`;
+  })();
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -304,41 +332,47 @@ export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
       {/* Header */}
       <div style={{ borderBottom: `1px solid ${v3.borderLight}`, padding: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: v3.bg }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          <button
-            onClick={handlePrev}
-            style={{ padding: 8, background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
-            onMouseEnter={e => e.currentTarget.style.background = v3.surface}
-            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-          >
-            <ChevronLeft size={20} color={v3.textMuted} />
-          </button>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 14, fontWeight: 500, color: v3.dark }}>{dateRangeLabel}</span>
+          {viewMode !== '3' && viewMode !== 'agenda' && (
             <button
-              onClick={handleThisWeek}
-              style={{ fontSize: 12, padding: '4px 12px', borderRadius: 6, border: 'none', background: 'transparent', cursor: 'pointer', color: v3.textMuted, transition: 'background 0.2s' }}
+              onClick={handlePrev}
+              style={{ padding: 8, background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
               onMouseEnter={e => e.currentTarget.style.background = v3.surface}
               onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
             >
-              This Week
+              <ChevronLeft size={20} color={v3.textMuted} />
             </button>
+          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 14, fontWeight: 500, color: v3.dark }}>{dateRangeLabel}</span>
+            {viewMode !== '3' && viewMode !== 'agenda' && (
+              <button
+                onClick={handleThisWeek}
+                style={{ fontSize: 12, padding: '4px 12px', borderRadius: 6, border: 'none', background: 'transparent', cursor: 'pointer', color: v3.textMuted, transition: 'background 0.2s' }}
+                onMouseEnter={e => e.currentTarget.style.background = v3.surface}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+              >
+                This Week
+              </button>
+            )}
           </div>
-          <button
-            onClick={handleNext}
-            style={{ padding: 8, background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
-            onMouseEnter={e => e.currentTarget.style.background = v3.surface}
-            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-          >
-            <ChevronRight size={20} color={v3.textMuted} />
-          </button>
+          {viewMode !== '3' && viewMode !== 'agenda' && (
+            <button
+              onClick={handleNext}
+              style={{ padding: 8, background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+              onMouseEnter={e => e.currentTarget.style.background = v3.surface}
+              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+            >
+              <ChevronRight size={20} color={v3.textMuted} />
+            </button>
+          )}
         </div>
 
-        {/* Mode Toggle - Pill Style */}
+        {/* View Mode Toggle */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: 4, borderRadius: 999, background: v3.surface }}>
-          {(['clean', 'everything'] as const).map(m => (
+          {(['7', '5', '3', 'agenda'] as const).map(m => (
             <button
               key={m}
-              onClick={() => setMode(m)}
+              onClick={() => setViewMode(m)}
               style={{
                 padding: '4px 12px',
                 fontSize: 12,
@@ -346,19 +380,119 @@ export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
                 borderRadius: 999,
                 border: 'none',
                 cursor: 'pointer',
-                background: mode === m ? v3.dark : 'transparent',
-                color: mode === m ? v3.bg : v3.textMuted,
+                background: viewMode === m ? v3.dark : 'transparent',
+                color: viewMode === m ? v3.bg : v3.textMuted,
                 transition: 'all 0.2s',
               }}
             >
-              {m === 'clean' ? 'Clean' : 'Everything'}
+              {m === '7' ? '7d' : m === '5' ? '5d' : m === '3' ? '3d' : 'Agenda'}
             </button>
           ))}
         </div>
       </div>
 
+      {/* Agenda View */}
+      {viewMode === 'agenda' && (
+        <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 28 }}>
+          {[0, 1].map(dayOffset => {
+            const date = daysInWeek[dayOffset];
+            const isToday = dayOffset === 0;
+            const dayLabel = isToday ? 'Today' : 'Tomorrow';
+            const dateStr = date.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+            const dayEvts = events
+              .filter(e => {
+                if (e.isAllDay || e.isBlock) return false;
+                const d = new Date(e.startTime);
+                d.setHours(0, 0, 0, 0);
+                return d.getTime() === date.getTime();
+              })
+              .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
+
+            return (
+              <div key={dayOffset}>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 12 }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: isToday ? v3.dark : v3.textMuted, letterSpacing: 0.1 }}>{dayLabel}</span>
+                  <span style={{ fontSize: 11, color: v3.textMuted }}>{dateStr}</span>
+                </div>
+                {dayEvts.length === 0 ? (
+                  <div style={{ fontSize: 13, color: v3.textMuted, fontStyle: 'italic' }}>No meetings</div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {dayEvts.map(event => {
+                      const bgColor = event.calendarKind === 'matria' ? '#B8AC97' : mutedColorFor(event.colorId, event.colorHex);
+                      const isBanana = event.colorId === '5';
+                      const titleLine = isBanana ? event.title : (event.attendeeContactName || event.title);
+                      const isPast = isToday && new Date(event.endTime) < currentTime;
+                      let displayedEventType = event.eventType;
+                      if (event.calendarKind === 'scalable' && (!displayedEventType || displayedEventType === 'other')) {
+                        const hasExternal = event.attendees.some((a: any) => !a.self);
+                        if (hasExternal) displayedEventType = 'discovery';
+                      }
+                      const pillColors = (() => {
+                        if (event.calendarKind === 'scalable') return { bg: '#7A9C70', fg: '#FFFFFF' };
+                        if (event.calendarKind === 'matria')   return { bg: '#B8AC97', fg: '#1B1B1B' };
+                        switch (displayedEventType) {
+                          case 'appointment': return { bg: '#6F87B5', fg: '#FFFFFF' };
+                          case 'school':      return { bg: '#BBB4D6', fg: '#1B1B1B' };
+                          case 'task':        return { bg: '#C99B6E', fg: '#FFFFFF' };
+                          case 'fun':         return { bg: '#B8625A', fg: '#FFFFFF' };
+                          case 'fyi':         return { bg: '#D9C28A', fg: '#1B1B1B' };
+                          default:            return { bg: '#9C9C9C', fg: '#FFFFFF' };
+                        }
+                      })();
+                      const pillLabelMap = { demo: 'Demo', discovery: 'Disc', followup: 'Fup', appointment: 'Appt', school: 'School', task: 'Task', fun: 'Fun', fyi: 'FYI' } as const;
+                      const pillLabel = displayedEventType && displayedEventType in pillLabelMap ? pillLabelMap[displayedEventType as keyof typeof pillLabelMap] : '';
+                      const guestStatus = getGuestStatus(event);
+                      const rsvpIcon = guestStatus !== 'none' ? RSVP_ICON[guestStatus] : '';
+
+                      return (
+                        <div
+                          key={event.id}
+                          onClick={() => onEventClick(event)}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'flex-start',
+                            gap: 14,
+                            padding: '10px 14px',
+                            borderRadius: 10,
+                            background: v3.surface,
+                            cursor: 'pointer',
+                            borderLeft: `3px solid ${bgColor}`,
+                            opacity: isPast ? 0.45 : 1,
+                            transition: 'opacity 0.3s',
+                          }}
+                        >
+                          <div style={{ minWidth: 72, flexShrink: 0 }}>
+                            <div style={{ fontSize: 12, fontWeight: 500, color: v3.dark }}>{formatTime(event.startTime)}</div>
+                            <div style={{ fontSize: 11, color: v3.textMuted }}>{formatTime(event.endTime)}</div>
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: v3.dark, lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {rsvpIcon && <span>{rsvpIcon} </span>}
+                              {titleLine}
+                            </div>
+                            {event.attendeeCompany && event.calendarKind !== 'family' && !isBanana && (
+                              <div style={{ fontSize: 11, color: v3.textMuted, marginTop: 2 }}>{event.attendeeCompany}</div>
+                            )}
+                            {pillLabel && (
+                              <div style={{ display: 'inline-block', marginTop: 5, padding: '1px 6px', borderRadius: 999, background: pillColors.bg, color: pillColors.fg, fontSize: 9, fontWeight: 700, letterSpacing: 0.3, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
+                                {pillLabel}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {/* Grid — Always Render Scaffold */}
-      <div ref={gridContainerRef} style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', position: 'relative', width: '100%' }}>
+      {viewMode !== 'agenda' && <div ref={gridContainerRef} style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', position: 'relative', width: '100%' }}>
           {/* Day Headers */}
           <div style={{ display: 'flex', alignItems: 'stretch', position: 'sticky', top: 0, zIndex: 10, background: 'transparent', borderBottom: `1px solid ${v3.borderLight}` }}>
             {/* Timezone Column Headers */}
@@ -643,7 +777,7 @@ export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
                   })()}
 
                   {/* Block Boundary Lines — weekdays (Mon-Fri) only */}
-                  {dayIdx >= 1 && dayIdx <= 5 && blockEvents
+                  {daysInWeek[dayIdx].getDay() >= 1 && daysInWeek[dayIdx].getDay() <= 5 && blockEvents
                     .filter(block => {
                       if (block.blockKind !== 'am_out' && block.blockKind !== 'pm_out') return false;
                       const blockDate = new Date(block.startTime);
@@ -743,7 +877,7 @@ export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
               <span style={{ fontSize: 14 }}>No events this week</span>
             </div>
           )}
-        </div>
+        </div>}
     </div>
   );
 };
