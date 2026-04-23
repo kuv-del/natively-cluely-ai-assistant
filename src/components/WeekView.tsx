@@ -156,42 +156,85 @@ interface EventContextModalProps {
   onColorChange: (colorId: string | null, hex: string) => void;
 }
 
+const EVENT_TYPE_LABELS: Record<string, string> = {
+  demo: 'Demo Call',
+  discovery: 'Discovery Call',
+  followup: 'Follow Up Call',
+  appointment: 'Appointment',
+  school: 'School',
+  task: 'Task',
+  fun: 'Fun',
+  fyi: 'FYI',
+};
+
 const EventContextModal: React.FC<EventContextModalProps> = ({
   event, pos, profile, profileLoading, showColorPicker, v3,
   onClose, onDelete, onDeal, onColorPickerToggle, onColorChange,
 }) => {
   const modalW = 340;
   const left = Math.min(pos.x + 8, window.innerWidth - modalW - 12);
-  const top = Math.min(pos.y - 10, window.innerHeight - 420);
+  const top = Math.min(pos.y - 10, window.innerHeight - 480);
 
   const dotColor = mutedColorFor(event.colorId, event.colorHex);
   const link = event.link;
+  const linkLabel = link
+    ? (link.includes('zoom') ? 'Zoom' : link.includes('meet.google') ? 'Google Meet' : 'Video call')
+    : null;
+
   const dateLabel = new Date(event.startTime).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
   const timeLabel = `${formatTime(event.startTime)} – ${formatTime(event.endTime)}`;
 
-  const contactName = event.attendeeContactName
-    || (profile?.contact ? [profile.contact.first_name, profile.contact.last_name].filter(Boolean).join(' ') : null);
+  // RSVP
+  const guestStatus = getGuestStatus(event);
+  const rsvpIcon = guestStatus !== 'none' ? RSVP_ICON[guestStatus] : null;
+
+  // Profile fields
+  const contactFirst = profile?.contact?.first_name || '';
+  const contactLast = profile?.contact?.last_name || '';
+  const contactName = event.attendeeContactName || [contactFirst, contactLast].filter(Boolean).join(' ') || null;
+  const email = profile?.contact?.email || null;
+  const phone = profile?.contact?.phone || null;
   const companyName = event.attendeeCompany || profile?.company?.company_name || null;
-  const industry = profile?.company?.industry || null;
-  const dealStage = profile?.deal?.deal_stage || null;
-  const stageLabel = dealStage ? (DEAL_STAGE_LABELS[dealStage.toLowerCase().replace(/[\s_-]+/g, '')] || dealStage) : null;
+  const revenue = profile?.company?.company_revenue || null;
+  const sdrOwner = profile?.deal?.sdr_owner_name || null;
+
+  // Event type pill (scalable calendar = call type pill; others = eventType label)
+  const pillLabel = event.eventType ? (EVENT_TYPE_LABELS[event.eventType] || null) : null;
+  const isScalable = event.calendarKind === 'scalable';
+  const pillBg = isScalable ? '#7A9C70' : (
+    event.calendarKind === 'matria' ? '#B8AC97' : '#9C9C9C'
+  );
+
+  const InfoRow = ({ label, value }: { label: string; value: string | null }) => (
+    <div style={{ display: 'flex', gap: 6, fontSize: 12, lineHeight: 1.5 }}>
+      <span style={{ color: v3.textMuted, minWidth: 72, flexShrink: 0 }}>{label}</span>
+      <span style={{ color: value ? v3.dark : v3.textMuted, fontStyle: value ? 'normal' : 'italic', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {value || '—'}
+      </span>
+    </div>
+  );
 
   return (
     <div
-      style={{ position: 'fixed', left, top, width: modalW, background: v3.bg, border: `1px solid ${v3.borderLight}`, borderRadius: 14, boxShadow: '0 8px 40px rgba(0,0,0,0.2)', zIndex: 1000, fontFamily: v3.fontSans, overflow: 'visible' }}
+      style={{ position: 'fixed', left, top, width: modalW, background: v3.bg, border: `1px solid ${v3.borderLight}`, borderRadius: 16, boxShadow: '0 8px 40px rgba(0,0,0,0.2)', zIndex: 1000, fontFamily: v3.fontSans, overflow: 'visible' }}
       onClick={e => e.stopPropagation()}
     >
-      {/* Header */}
-      <div style={{ padding: '14px 14px 12px', borderBottom: `1px solid ${v3.borderLight}`, display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+      {/* Header: [rsvp] [title]  [dot] [trash] [×] */}
+      <div style={{ padding: '14px 14px 12px', borderBottom: `1px solid ${v3.borderLight}`, display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+        {rsvpIcon && (
+          <span style={{ flexShrink: 0, fontSize: 13, marginTop: 2, color: guestStatus === 'declined' ? '#E53E3E' : v3.textMuted }}>{rsvpIcon}</span>
+        )}
+        <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: v3.dark, lineHeight: 1.35, wordBreak: 'break-word' }}>{event.title}</div>
+
         {/* Color dot */}
         <div style={{ position: 'relative', flexShrink: 0, marginTop: 3 }}>
           <button
             onClick={onColorPickerToggle}
             title="Change color"
-            style={{ width: 13, height: 13, borderRadius: '50%', background: dotColor, border: 'none', cursor: 'pointer', padding: 0, display: 'block', boxShadow: '0 0 0 2px rgba(0,0,0,0.08)' }}
+            style={{ width: 13, height: 13, borderRadius: '50%', background: dotColor, border: 'none', cursor: 'pointer', padding: 0, display: 'block', boxShadow: '0 0 0 2px rgba(0,0,0,0.1)' }}
           />
           {showColorPicker && (
-            <div style={{ position: 'absolute', top: 20, left: -4, background: v3.bg, border: `1px solid ${v3.borderLight}`, borderRadius: 10, padding: 10, display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, zIndex: 20, boxShadow: '0 4px 20px rgba(0,0,0,0.15)', width: 144 }}>
+            <div style={{ position: 'absolute', top: 20, right: 0, background: v3.bg, border: `1px solid ${v3.borderLight}`, borderRadius: 12, padding: 10, display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, zIndex: 20, boxShadow: '0 4px 20px rgba(0,0,0,0.15)', width: 148 }}>
               {EVENT_COLORS.map(c => (
                 <button key={c.name} title={c.name} onClick={() => onColorChange(c.colorId, c.hex)}
                   style={{ width: 24, height: 24, borderRadius: '50%', background: c.hex, border: event.colorId === c.colorId ? `2px solid ${v3.dark}` : '2px solid transparent', cursor: 'pointer', padding: 0 }}
@@ -200,54 +243,62 @@ const EventContextModal: React.FC<EventContextModalProps> = ({
             </div>
           )}
         </div>
-        {/* Title */}
-        <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: v3.dark, lineHeight: 1.35, wordBreak: 'break-word' }}>{event.title}</div>
-        {/* Trash + X */}
-        <button onClick={onDelete} title="Delete event" style={{ padding: '2px 4px', background: 'none', border: 'none', cursor: 'pointer', color: v3.textMuted, fontSize: 14, lineHeight: 1, flexShrink: 0 }}>
+
+        <button onClick={onDelete} title="Delete event" style={{ padding: '2px 4px', background: 'none', border: 'none', cursor: 'pointer', color: v3.textMuted, lineHeight: 1, flexShrink: 0 }}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
         </button>
         <button onClick={onClose} title="Close" style={{ padding: '2px 4px', background: 'none', border: 'none', cursor: 'pointer', color: v3.textMuted, fontSize: 18, lineHeight: 1, flexShrink: 0 }}>×</button>
       </div>
 
-      {/* Date/time + link */}
+      {/* Date / time / location */}
       <div style={{ padding: '10px 14px', borderBottom: `1px solid ${v3.borderLight}` }}>
-        <div style={{ fontSize: 13, fontWeight: 500, color: v3.dark }}>{dateLabel}</div>
+        <div style={{ fontSize: 13, fontWeight: 600, color: v3.dark }}>{dateLabel}</div>
         <div style={{ fontSize: 12, color: v3.textMuted, marginTop: 1 }}>{timeLabel}</div>
-        {(link || event.location) && (
-          <div style={{ fontSize: 11, color: v3.textMuted, marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
-            <span>📍</span>
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {link ? (link.includes('zoom') ? 'Zoom' : link.includes('meet.google') ? 'Google Meet' : 'Video call') : event.location}
-            </span>
+        {(linkLabel || event.location) && (
+          <div style={{ marginTop: 5 }}>
+            {linkLabel ? (
+              <button
+                onClick={() => (window as any).electronAPI?.openExternal?.(link)}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#6F87B5', background: 'none', border: 'none', cursor: 'pointer', padding: 0, textDecoration: 'underline', textDecorationColor: 'transparent', fontFamily: v3.fontSans }}
+                onMouseEnter={e => (e.currentTarget.style.textDecorationColor = '#6F87B5')}
+                onMouseLeave={e => (e.currentTarget.style.textDecorationColor = 'transparent')}
+              >
+                <span style={{ fontSize: 13 }}>📍</span>
+                {linkLabel}
+              </button>
+            ) : (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: v3.textMuted }}>
+                <span style={{ fontSize: 13 }}>📍</span>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{event.location}</span>
+              </div>
+            )}
           </div>
         )}
       </div>
 
-      {/* Profile */}
-      <div style={{ padding: '10px 14px', borderBottom: `1px solid ${v3.borderLight}`, minHeight: 72 }}>
+      {/* Contact profile */}
+      <div style={{ padding: '10px 14px', borderBottom: `1px solid ${v3.borderLight}` }}>
         {profileLoading && !contactName ? (
           <div style={{ fontSize: 12, color: v3.textMuted, fontStyle: 'italic' }}>Loading...</div>
         ) : (
           <>
-            {contactName && <div style={{ fontSize: 14, fontWeight: 600, color: v3.dark, lineHeight: 1.3 }}>{contactName}</div>}
-            {companyName && (
-              <div style={{ fontSize: 12, color: v3.textMuted, marginTop: 2 }}>
-                {companyName}{industry ? ` · ${industry}` : ''}
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
+              <div>
+                {contactName && <div style={{ fontSize: 14, fontWeight: 700, color: v3.dark, lineHeight: 1.3 }}>{contactName}</div>}
+                {companyName && <div style={{ fontSize: 12, color: v3.textMuted, marginTop: 1 }}>{companyName}</div>}
               </div>
-            )}
-            {stageLabel && (
-              <div style={{ display: 'inline-block', marginTop: 6, padding: '2px 8px', borderRadius: 999, background: '#7A9C70', color: '#fff', fontSize: 10, fontWeight: 700, letterSpacing: 0.4, textTransform: 'uppercase' }}>
-                {stageLabel}
-              </div>
-            )}
-            {event.calendarKind === 'scalable' && event.eventType && event.eventType !== 'other' && (
-              <div style={{ fontSize: 11, color: v3.textMuted, marginTop: stageLabel ? 4 : 6, textTransform: 'capitalize' }}>
-                {event.eventType}
-              </div>
-            )}
-            {!contactName && !companyName && !profileLoading && (
-              <div style={{ fontSize: 12, color: v3.textMuted, fontStyle: 'italic' }}>No profile data</div>
-            )}
+              {pillLabel && (
+                <div style={{ flexShrink: 0, marginTop: 1, padding: '4px 12px', borderRadius: 999, background: pillBg, color: '#fff', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap' }}>
+                  {pillLabel}
+                </div>
+              )}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 1, marginTop: 6 }}>
+              <InfoRow label="Email" value={email} />
+              <InfoRow label="Phone" value={phone} />
+              <InfoRow label="Revenue" value={revenue} />
+              <InfoRow label="SDR Owner" value={sdrOwner} />
+            </div>
           </>
         )}
       </div>
@@ -257,13 +308,13 @@ const EventContextModal: React.FC<EventContextModalProps> = ({
         <button
           onClick={() => link && (window as any).electronAPI?.openExternal?.(link)}
           disabled={!link}
-          style={{ flex: 1, padding: '8px 0', borderRadius: 8, border: 'none', cursor: link ? 'pointer' : 'not-allowed', background: link ? v3.dark : v3.surface, color: link ? v3.bg : v3.textMuted, fontSize: 13, fontWeight: 600, opacity: link ? 1 : 0.45, transition: 'opacity 0.2s' }}
+          style={{ flex: 1, padding: '10px 0', borderRadius: 999, border: 'none', cursor: link ? 'pointer' : 'not-allowed', background: link ? v3.dark : v3.surface, color: link ? v3.bg : v3.textMuted, fontSize: 13, fontWeight: 700, opacity: link ? 1 : 0.4, transition: 'opacity 0.2s' }}
         >
           Start
         </button>
         <button
           onClick={onDeal}
-          style={{ flex: 1, padding: '8px 0', borderRadius: 8, border: `1px solid ${v3.borderLight}`, cursor: 'pointer', background: 'transparent', color: v3.dark, fontSize: 13, fontWeight: 500 }}
+          style={{ flex: 1, padding: '10px 0', borderRadius: 999, border: `1px solid ${v3.borderLight}`, cursor: 'pointer', background: 'transparent', color: v3.dark, fontSize: 13, fontWeight: 600 }}
         >
           Deal
         </button>
