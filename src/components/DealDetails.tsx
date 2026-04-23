@@ -401,7 +401,7 @@ const DealDetails: React.FC<DealDetailsProps> = ({ contactId, onBack }) => {
                     </div>
 
                     {/* Tab strip */}
-                    <div className="flex items-center justify-between mb-8 -mx-8 px-8 py-3" style={{ background: '#EEEDE9' }}>
+                    <div className="flex items-center justify-between mb-8 -mx-8 px-8 py-3" style={{ background: '#F7F5F0' }}>
                         <div className="flex gap-2">
                             {AVAILABLE_TABS.map((tab) => (
                                 <button
@@ -615,7 +615,7 @@ const DealDetails: React.FC<DealDetailsProps> = ({ contactId, onBack }) => {
                                                 <div key={`${group._meetingType}-${idx}`} className="space-y-2">
                                                     {/* Meeting heading */}
                                                     <div className="flex items-center gap-2 flex-wrap">
-                                                        <h3 className="text-[14px] font-semibold text-text-primary leading-snug">
+                                                        <h3 className="text-[14px] font-semibold text-text-primary leading-snug" style={{ fontFamily: '"Playfair Display", "Times New Roman", serif', fontStyle: 'italic', fontWeight: 400 }}>
                                                             {typeLabel}
                                                             {dateStr && (
                                                                 <span className="font-normal text-text-tertiary ml-2 text-[13px]">on {dateStr}</span>

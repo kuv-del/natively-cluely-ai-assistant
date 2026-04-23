@@ -33,8 +33,9 @@ const v3 = {
   fontSans: '"Nunito Sans", -apple-system, sans-serif',
   fontSerif: '"Playfair Display", "Times New Roman", serif',
   bg: '#FFFFFF',
-  surface: '#EEEDE9',
-  surfaceHover: '#E5E3DD',
+  surface: '#F4F3EF',
+  surfaceHover: '#ECEAE4',
+  card: '#F7F5F0',
   dark: '#1B1B1B',
   textMuted: 'rgba(27,27,27,0.6)',
   border: '#BFBFBF',
@@ -159,7 +160,7 @@ const KateDetails: React.FC<KateDetailsProps> = ({ event, onBack }) => {
 
       {/* Body */}
       <div className="flex-1 overflow-y-auto px-8 py-6" style={{ background: v3.surface }}>
-        <div className="max-w-3xl mx-auto" style={{ background: v3.bg, borderRadius: 8, padding: 16 }}>
+        <div className="max-w-3xl mx-auto" style={{ background: v3.card, borderRadius: 8, padding: 16 }}>
           {tab === 'overview' && (
             <div>
               <p className="text-sm" style={{ color: v3.textMuted, fontStyle: 'italic', fontFamily: v3.fontSerif }}>

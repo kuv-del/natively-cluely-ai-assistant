@@ -30,8 +30,9 @@ const v3 = {
   fontSans: '"Nunito Sans", -apple-system, BlinkMacSystemFont, sans-serif',
   fontSerif: '"Playfair Display", "Times New Roman", serif',
   bg: '#FFFFFF',
-  surface: '#EEEDE9',
-  surfaceHover: '#E5E3DD',
+  surface: '#F4F3EF',
+  surfaceHover: '#ECEAE4',
+  card: '#F7F5F0',
   dark: '#1B1B1B',
   textMuted: 'rgba(27,27,27,0.6)',
   border: '#BFBFBF',
@@ -277,7 +278,7 @@ export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
   const totalHeightPx = hourCount * 48;
 
   return (
-    <div style={{ borderRadius: 12, border: `1px solid ${v3.borderLight}`, background: 'transparent', overflow: 'hidden', display: 'flex', flexDirection: 'column', height: '100%', fontFamily: v3.fontSans }}>
+    <div style={{ borderRadius: 12, border: `1px solid ${v3.borderLight}`, background: 'transparent', overflow: 'hidden', display: 'flex', flexDirection: 'column', height: '100%', fontFamily: v3.fontSans, width: '100%' }}>
       {/* Header */}
       <div style={{ borderBottom: `1px solid ${v3.borderLight}`, padding: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: v3.bg }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
@@ -335,9 +336,9 @@ export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
       </div>
 
       {/* Grid — Always Render Scaffold */}
-      <div style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column', position: 'relative' }}>
+      <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', position: 'relative', width: '100%' }}>
           {/* Day Headers */}
-          <div style={{ display: 'flex', position: 'sticky', top: 0, zIndex: 10 }}>
+          <div style={{ display: 'flex', position: 'sticky', top: 0, zIndex: 10, background: 'transparent', borderBottom: `1px solid ${v3.borderLight}` }}>
             {/* Timezone Column Headers */}
             <div style={{ display: 'flex', flexShrink: 0 }}>
               {TZ_COLUMNS.map(({ label }) => (
@@ -368,6 +369,7 @@ export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
                   key={idx}
                   style={{
                     flex: 1,
+                    minWidth: 0,
                     padding: 8,
                     borderRight: `1px solid ${v3.borderLight}`,
                     textAlign: 'center',
@@ -395,7 +397,7 @@ export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
           </div>
 
           {/* Time Grid */}
-          <div style={{ display: 'flex', flex: 1 }}>
+          <div style={{ display: 'flex', flex: 1, overflow: 'auto', width: '100%' }}>
             {/* Timezone Columns (serve as time axis) */}
             <div style={{ display: 'flex', flexShrink: 0 }}>
               {TZ_COLUMNS.map(({ label, tz }) => (
@@ -439,6 +441,7 @@ export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
                   key={dayIdx}
                   style={{
                     flex: 1,
+                    minWidth: 0,
                     borderRight: `1px solid ${v3.borderLight}`,
                     position: 'relative',
                     minHeight: `${totalHeightPx}px`,
@@ -484,18 +487,28 @@ export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
                       const topPx = (eventStartHour - startHour) * 48 + (eventStartMinute / 60) * 48;
                       const heightPx = Math.max((durationMins / 60) * 48, 22);
                       const guestStatus = getGuestStatus(event);
-                      const bgColor = mutedColorFor(event.colorId, event.colorHex);
+                      // Task E: Matria warm greige override
+                      const bgColor = event.calendarKind === 'matria' ? '#B8AC97' : mutedColorFor(event.colorId, event.colorHex);
 
                       // New event card content
-                      const titleLine = event.attendeeContactName || event.title;
+                      // Task C: Scalable fallback discovery for events with external attendees
+                      let displayedEventType = event.eventType;
+                      if (event.calendarKind === 'scalable' && (!displayedEventType || displayedEventType === 'other')) {
+                        const hasExternalAttendees = event.attendees.some((a: any) => !a.self);
+                        if (hasExternalAttendees) displayedEventType = 'discovery';
+                      }
+
+                      // Task D: Banana title rule
+                      const isBanana = event.colorId === '5';
+                      const titleLine = isBanana ? event.title : (event.attendeeContactName || event.title);
                       const companyLine = event.attendeeCompany;
-                      const showPill = event.eventType && event.eventType !== 'other' && heightPx >= 36;
-                      const showCompany = companyLine && event.calendarKind !== 'family' && heightPx >= 50;
+                      const showPill = displayedEventType && displayedEventType !== 'other' && heightPx >= 36;
+                      const showCompany = !isBanana && companyLine && event.calendarKind !== 'family' && heightPx >= 50;
 
                       const pillColors = (() => {
                         if (event.calendarKind === 'scalable') return { bg: '#7A9C70', fg: '#FFFFFF' };
-                        if (event.calendarKind === 'matria')   return { bg: '#D9C28A', fg: '#1B1B1B' };
-                        switch (event.eventType) {
+                        if (event.calendarKind === 'matria')   return { bg: '#B8AC97', fg: '#1B1B1B' };
+                        switch (displayedEventType) {
                           case 'appointment': return { bg: '#6F87B5', fg: '#FFFFFF' };
                           case 'school':      return { bg: '#BBB4D6', fg: '#1B1B1B' };
                           case 'task':        return { bg: '#C99B6E', fg: '#FFFFFF' };
@@ -506,7 +519,7 @@ export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
                       })();
 
                       const pillLabelMap = { demo: 'Demo', discovery: 'Disc', followup: 'Fup', appointment: 'Appt', school: 'School', task: 'Task', fun: 'Fun', fyi: 'FYI' } as const;
-                      const pillLabel = event.eventType && event.eventType in pillLabelMap ? pillLabelMap[event.eventType as keyof typeof pillLabelMap] : '';
+                      const pillLabel = displayedEventType && displayedEventType in pillLabelMap ? pillLabelMap[displayedEventType as keyof typeof pillLabelMap] : '';
                       const rsvpIcon = guestStatus !== 'none' ? RSVP_ICON[guestStatus] : '';
 
                       return (
@@ -615,60 +628,63 @@ export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
           </div>
 
           {/* All-Day Events Bar */}
-          {allDayEvents.length > 0 && (
-            <div style={{ borderTop: `1px solid ${v3.borderLight}`, padding: 6, maxHeight: 'auto', background: v3.bg }}>
-              <div style={{ display: 'flex' }}>
-                {/* Timezone columns spacer */}
-                <div style={{ width: 36 * 3, flexShrink: 0 }}></div>
-                <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
-                  {daysInWeek.map((_, dayIdx) => (
-                    <div key={dayIdx} style={{ position: 'relative', minHeight: 54 }}>
-                      {allDayEvents.map((event, eventIdx) => {
-                        const eventStart = new Date(event.startTime);
-                        const eventEnd = new Date(event.endTime);
-                        eventStart.setHours(0, 0, 0, 0);
-                        eventEnd.setHours(0, 0, 0, 0);
+          {allDayEvents.length > 0 && (() => {
+            const sortedAllDayEvents = [...allDayEvents].sort((a, b) =>
+              new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
+            );
+            const maxStackedRows = Math.max(1, sortedAllDayEvents.length);
+            const stripHeightPx = maxStackedRows * 20 + 4;
 
-                        const dayOffset = Math.max(0, daysBetween(weekStart, eventStart));
-                        const daySpan = Math.min(7 - dayOffset, Math.max(1, daysBetween(eventStart, eventEnd) + 1));
+            return (
+              <div style={{ borderTop: `1px solid ${v3.borderLight}`, position: 'relative', minHeight: `${stripHeightPx}px`, background: v3.bg }}>
+                {/* Timezone spacer */}
+                <div style={{ position: 'absolute', left: 0, width: 36 * 3, height: '100%', flexShrink: 0 }}></div>
 
-                        if (dayOffset !== dayIdx) return null;
+                {/* All-day pills overlay (spans across grid width) */}
+                <div style={{ position: 'absolute', left: `${36 * 3}px`, right: 0, top: 0, height: '100%', width: 'calc(100% - 108px)' }}>
+                  {sortedAllDayEvents.map((event, eventIdx) => {
+                    const eventStart = new Date(event.startTime);
+                    const eventEnd = new Date(event.endTime);
+                    eventStart.setHours(0, 0, 0, 0);
+                    eventEnd.setHours(0, 0, 0, 0);
 
-                        const bgColor = mutedColorFor(event.colorId, event.colorHex);
-                        const titleLine = event.attendeeContactName || event.title;
+                    const dayOffset = Math.max(0, daysBetween(weekStart, eventStart));
+                    const daySpan = Math.min(7 - dayOffset, Math.max(1, daysBetween(eventStart, eventEnd) + 1));
 
-                        return (
-                          <div
-                            key={event.id}
-                            onClick={() => onEventClick(event)}
-                            style={{
-                              position: 'absolute',
-                              left: 0,
-                              right: 0,
-                              top: `${eventIdx * 18 + 2}px`,
-                              height: 18,
-                              background: bgColor,
-                              color: '#FFFFFF',
-                              padding: '2px 4px',
-                              borderRadius: 4,
-                              fontSize: 11,
-                              fontWeight: 500,
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              whiteSpace: 'nowrap',
-                              cursor: 'pointer',
-                            }}
-                          >
-                            {titleLine}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ))}
+                    const bgColor = event.calendarKind === 'matria' ? '#B8AC97' : mutedColorFor(event.colorId, event.colorHex);
+                    const isBanana = event.colorId === '5';
+                    const titleLine = isBanana ? event.title : (event.attendeeContactName || event.title);
+
+                    return (
+                      <div
+                        key={event.id}
+                        onClick={() => onEventClick(event)}
+                        style={{
+                          position: 'absolute',
+                          left: `${(dayOffset / 7) * 100}%`,
+                          width: `${(daySpan / 7) * 100}%`,
+                          top: `${eventIdx * 20 + 2}px`,
+                          height: 18,
+                          background: bgColor,
+                          color: '#FFFFFF',
+                          padding: '2px 4px',
+                          borderRadius: 4,
+                          fontSize: 11,
+                          fontWeight: 500,
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {titleLine}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Empty State Overlay */}
           {timedEvents.length === 0 && allDayEvents.length === 0 && (
