@@ -286,6 +286,14 @@ interface ElectronAPI {
   onRAGStreamComplete: (callback: (data: { meetingId?: string; global?: boolean }) => void) => () => void
   onRAGStreamError: (callback: (data: { meetingId?: string; global?: boolean; error: string }) => void) => () => void
 
+  // GoBot Ask API
+  gobotQuery: (payload: { query: string; conversationHistory?: Array<{ role: string; content: string }> }) => Promise<{ success: boolean }>
+  onGobotChunk: (callback: (data: { chunk: string }) => void) => () => void
+  onGobotStatus: (callback: (data: { message: string }) => void) => () => void
+  onGobotTool: (callback: (data: { name: string; status: string }) => void) => () => void
+  onGobotDone: (callback: (data: { model: string }) => void) => () => void
+  onGobotError: (callback: (data: { error: string }) => void) => () => void
+
   // Keybind Management
   getKeybinds: () => Promise<Array<{ id: string; label: string; accelerator: string; isGlobal: boolean; defaultAccelerator: string }>>
   setKeybind: (id: string, accelerator: string) => Promise<boolean>
@@ -1146,6 +1154,36 @@ contextBridge.exposeInMainWorld("electronAPI", {
     return () => {
       ipcRenderer.removeListener('rag:stream-error', subscription)
     }
+  },
+
+  // GoBot Ask API
+  gobotQuery: (payload: { query: string; conversationHistory?: Array<{ role: string; content: string }> }) =>
+    ipcRenderer.invoke('ask:gobot', payload),
+
+  onGobotChunk: (callback: (data: { chunk: string }) => void) => {
+    const subscription = (_: any, data: any) => callback(data)
+    ipcRenderer.on('ask:chunk', subscription)
+    return () => ipcRenderer.removeListener('ask:chunk', subscription)
+  },
+  onGobotStatus: (callback: (data: { message: string }) => void) => {
+    const subscription = (_: any, data: any) => callback(data)
+    ipcRenderer.on('ask:status', subscription)
+    return () => ipcRenderer.removeListener('ask:status', subscription)
+  },
+  onGobotTool: (callback: (data: { name: string; status: string }) => void) => {
+    const subscription = (_: any, data: any) => callback(data)
+    ipcRenderer.on('ask:tool', subscription)
+    return () => ipcRenderer.removeListener('ask:tool', subscription)
+  },
+  onGobotDone: (callback: (data: { model: string }) => void) => {
+    const subscription = (_: any, data: any) => callback(data)
+    ipcRenderer.on('ask:done', subscription)
+    return () => ipcRenderer.removeListener('ask:done', subscription)
+  },
+  onGobotError: (callback: (data: { error: string }) => void) => {
+    const subscription = (_: any, data: any) => callback(data)
+    ipcRenderer.on('ask:error', subscription)
+    return () => ipcRenderer.removeListener('ask:error', subscription)
   },
 
   // Keybind Management

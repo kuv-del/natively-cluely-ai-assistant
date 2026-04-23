@@ -3395,5 +3395,87 @@ export function initializeIpcHandlers(appState: AppState): void {
       return { success: false, error: e.message };
     }
   });
+
+  // ── GoBot Ask endpoint ───────────────────────────────────────────────────
+  safeHandle("ask:gobot", async (
+    event,
+    { query, conversationHistory }:
+    { query: string; conversationHistory?: Array<{ role: string; content: string }> }
+  ) => {
+    const gobotUrl = "http://localhost:3001";
+
+    // Read GATEWAY_SECRET from env or ~/gobot/.env
+    let secret = process.env.GATEWAY_SECRET || "";
+    if (!secret) {
+      try {
+        const { readFileSync, existsSync } = require("fs");
+        const { homedir } = require("os");
+        const envPath = require("path").join(homedir(), "gobot", ".env");
+        if (existsSync(envPath)) {
+          const envContent = readFileSync(envPath, "utf-8");
+          secret = envContent.match(/^GATEWAY_SECRET=(.+)$/m)?.[1]?.trim() || "";
+        }
+      } catch (e) {
+        console.warn("[ask:gobot] Could not read ~/gobot/.env:", e);
+      }
+    }
+
+    let res: Response;
+    try {
+      res = await fetch(`${gobotUrl}/ask`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(secret ? { Authorization: `Bearer ${secret}` } : {}),
+        },
+        body: JSON.stringify({ query, conversationHistory }),
+      });
+    } catch (err: any) {
+      event.sender.send("ask:error", { error: "GoBot unreachable. Is it running locally?" });
+      return { success: false };
+    }
+
+    if (!res.ok) {
+      event.sender.send("ask:error", { error: `GoBot returned ${res.status}` });
+      return { success: false };
+    }
+
+    const reader = res.body!.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const parsed = JSON.parse(line.slice(6));
+            if (parsed.type === "text") {
+              event.sender.send("ask:chunk", { chunk: parsed.chunk });
+            } else if (parsed.type === "tool") {
+              event.sender.send("ask:tool", { name: parsed.name, status: parsed.status });
+            } else if (parsed.type === "status") {
+              event.sender.send("ask:status", { message: parsed.message });
+            } else if (parsed.type === "done") {
+              event.sender.send("ask:done", { model: parsed.model });
+            } else if (parsed.type === "error") {
+              event.sender.send("ask:error", { error: parsed.message });
+            }
+          } catch {
+            // Malformed SSE line — skip
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+
+    return { success: true };
+  });
 }
 
