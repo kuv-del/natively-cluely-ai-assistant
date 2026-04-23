@@ -2159,6 +2159,9 @@ export class AppState {
       CalendarMenuBarHelper.toggle(this.calendarTray!);
     });
 
+    // Pre-warm the popup window so first click is instant (no loading delay).
+    CalendarMenuBarHelper.prewarm(this.calendarTray);
+
     this.updateTrayTitle();
     if (this.trayTitleInterval) clearInterval(this.trayTitleInterval);
     this.trayTitleInterval = setInterval(() => this.updateTrayTitle(), 30_000);

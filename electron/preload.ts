@@ -130,6 +130,7 @@ interface ElectronAPI {
   menubarOpenCalendarEvent: (eventId: string) => Promise<void>
   menubarFocusMain: () => Promise<void>
   onOpenCalendarEvent: (callback: (event: any, data: { calendarEventId: string }) => void) => () => void
+  onMenubarRefresh: (callback: () => void) => () => void
 
   // Intelligence Mode Events
   onIntelligenceAssistUpdate: (callback: (data: { insight: string }) => void) => () => void
@@ -1024,6 +1025,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
     return () => {
       ipcRenderer.removeListener('open-calendar-event', callback);
     };
+  },
+  onMenubarRefresh: (callback: () => void) => {
+    const sub = () => callback();
+    ipcRenderer.on('menubar:refresh', sub);
+    return () => ipcRenderer.removeListener('menubar:refresh', sub);
   },
 
   // Script Helper API

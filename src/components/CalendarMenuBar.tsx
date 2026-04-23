@@ -106,17 +106,28 @@ const BottomRow: React.FC<{ label: string; shortcut?: string; onClick: () => voi
     );
 };
 
+function fetchEvents(setEvents: (e: CalendarEvent[]) => void, setLoading?: (v: boolean) => void) {
+    (window as any).electronAPI?.menubarGetEvents?.()
+        .then((evts: CalendarEvent[]) => {
+            setEvents(evts || []);
+            setLoading?.(false);
+        })
+        .catch(() => setLoading?.(false));
+}
+
 export default function CalendarMenuBar() {
     const [events, setEvents] = useState<CalendarEvent[]>([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        (window as any).electronAPI?.menubarGetEvents?.()
-            .then((evts: CalendarEvent[]) => {
-                setEvents(evts || []);
-                setLoading(false);
-            })
-            .catch(() => setLoading(false));
+        // Initial load
+        fetchEvents(setEvents, setLoading);
+
+        // Refresh signal from main process when popup is shown — no loading spinner
+        const cleanup = (window as any).electronAPI?.onMenubarRefresh?.(() => {
+            fetchEvents(setEvents);
+        });
+        return () => cleanup?.();
     }, []);
 
     const now = Date.now();
