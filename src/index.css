@@ -6,6 +6,58 @@
   font-display: swap;
 }
 
+/* Playfair Display — true italic + roman, weights 400/600/700.
+   font-feature-settings enables standard + discretionary ligatures so the
+   italic ‘ct’, ‘st’, ‘fi’, ‘fl’ etc. render as designed. */
+@font-face {
+  font-family: 'Playfair Display';
+  src: url('./font/PlayfairDisplay-Regular-400.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Playfair Display';
+  src: url('./font/PlayfairDisplay-Regular-600.ttf') format('truetype');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Playfair Display';
+  src: url('./font/PlayfairDisplay-Regular-700.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Playfair Display';
+  src: url('./font/PlayfairDisplay-Italic-400.ttf') format('truetype');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Playfair Display';
+  src: url('./font/PlayfairDisplay-Italic-600.ttf') format('truetype');
+  font-weight: 600;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Playfair Display';
+  src: url('./font/PlayfairDisplay-Italic-700.ttf') format('truetype');
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
+
+/* Apply ligatures globally where Playfair is used. */
+.playfair, [style*="Playfair"] {
+  font-feature-settings: "liga" 1, "dlig" 1, "kern" 1;
+  font-variant-ligatures: common-ligatures discretionary-ligatures;
+}
+
 @font-face {
   font-family: 'CelebMFLight';
   src: url('./font/Masterfont - Celeb MF Light.otf') format('opentype');

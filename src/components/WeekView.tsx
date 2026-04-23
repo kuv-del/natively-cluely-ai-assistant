@@ -29,7 +29,7 @@ interface WeekViewProps {
 const v3 = {
   fontSans: '"Nunito Sans", -apple-system, BlinkMacSystemFont, sans-serif',
   fontSerif: '"Playfair Display", "Times New Roman", serif',
-  bg: '#FFFFFF',
+  bg: '#FDFDFA',
   surface: '#FDFDFA',
   surfaceHover: '#ECEAE4',
   card: '#F7F5F0',
