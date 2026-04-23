@@ -2,27 +2,30 @@
 
 Features Kate has confirmed she wants but that we're not building right now.
 
-**Priority order (remaining active items, 2026-04-20):**
-1. 🔴 **1.21** RSVP + calendar color on meeting feed — active priority
-2. 🔴 **1.1** Storage architecture (Convex as source of truth — foundation for everything)
-3. 🟠 **1.3** Knowledge base revamps (sales-reframing 13 premium modules)
-4. 🟠 **1.6** Next Steps button + commands → HubSpot updates
-5. 🟠 **1.7** Test HubSpot updates (wire approved Next Steps → HubSpot PATCH)
-6. 🟠 **1.14** Deal grading assessment (Grade tab)
-7. 🟡 **1.16** Meeting outcome classifier (tomato color + manual command)
-8. 🟡 **1.17** Multi-party transcript swap
-9. 🟡 **1.18** Attendee name labeling
-10. 🟡 **1.19** Live coaching reads full deal context from SQLite
-11. 🟡 **1.4** SDR notes + SDR transcript in MeetingDetails
-12. 🟡 **1.5** Company & prospect enrichment
-13. 🟡 **1.9** Past calls auto-merged into Prep tab
-14. 🟡 **1.10** Hydrate in-call overlay with prospect context
-15. 🟡 **1.11** MeetingDetails chat reaches every tab
-16. 🟢 **1.15** HubSpot-ID compliance ratchet (do before 1.13 Stage 5)
-17. 🟢 **Option A** Note Sections → HubSpot deal field writes (new 2026-04-20)
-18. 🟢 **Phase 2.2/2.3** Powerdialing + task blocks
-19. 🟢 **Phase 3** Calendar widget + Nurture tab
-20. 🟢 **Phase 4** Pipeline view + powerdialer + bulk chat + larger calendar + menu bar
+**Priority order (remaining active items, 2026-04-22):**
+1. 🔴 **1.22** Weekly calendar view in main UI (replaces activity feed top widgets) — requested 2026-04-22
+2. 🔴 **1.21** RSVP + calendar color on meeting feed — active priority
+3. 🔴 **1.1** Storage architecture (Convex as source of truth — foundation for everything)
+4. 🟠 **1.3** Knowledge base revamps (sales-reframing 13 premium modules)
+5. 🟠 **1.6** Next Steps button + commands → HubSpot updates
+6. 🟠 **1.7** Test HubSpot updates (wire approved Next Steps → HubSpot PATCH)
+7. 🟠 **1.14** Deal grading assessment (Grade tab)
+8. 🟡 **1.23** Calendar tray settings UI (calendar selector, timing picker, editable blocklist) — requested 2026-04-22
+9. 🟡 **1.24** Monthly view + day agenda view in main UI — next up after 1.22
+10. 🟡 **1.16** Meeting outcome classifier (tomato color + manual command)
+11. 🟡 **1.17** Multi-party transcript swap
+12. 🟡 **1.18** Attendee name labeling
+13. 🟡 **1.19** Live coaching reads full deal context from SQLite
+14. 🟡 **1.4** SDR notes + SDR transcript in MeetingDetails
+15. 🟡 **1.5** Company & prospect enrichment
+16. 🟡 **1.9** Past calls auto-merged into Prep tab
+17. 🟡 **1.10** Hydrate in-call overlay with prospect context
+18. 🟡 **1.11** MeetingDetails chat reaches every tab
+19. 🟢 **1.15** HubSpot-ID compliance ratchet (do before 1.13 Stage 5)
+20. 🟢 **Option A** Note Sections → HubSpot deal field writes (new 2026-04-20)
+21. 🟢 **Phase 2.2/2.3** Powerdialing + task blocks
+22. 🟢 **Phase 3** Calendar widget + Nurture tab
+23. 🟢 **Phase 4** Pipeline view + powerdialer + bulk chat + larger calendar + menu bar
 21. 💤 **Nice to have** Dual-channel STT Audio Diagnostic Panel
 22. 💤 **Available but not needed** Deepgram multi-key pools
 23. **B1** SDR triage transcripts missing (Spellman/Tenny bug)
@@ -141,6 +144,9 @@ Current `src/slack-triage-sync.ts` writes straight to Notion. Flip it so:
 | 1.17 | **Multi-party transcript swap** — replace the Natively transcript with Zoom's speaker-labeled transcript when a group call happens. Two triggers: (a) **auto**: calendar event has 3+ attendees → swap automatically after the call; (b) **manual**: Kate tells Natively "swap with Zoom transcript" via in-call or post-call chat → does the same regardless of attendee count (handles uninvited participants joining). Zoom's transcript (already synced to Convex via `zoom-transcript-sync`) has per-speaker name labels. Logic: wait for Zoom transcript to land in Convex (poll or webhook), then overwrite the Natively transcript row with Zoom's version. The Natively summary/coaching data generated during the live call is preserved — only the raw transcript is swapped. | Phase 1 |
 | 1.19 | **Live coaching reads full deal context from SQLite cache** — during a live meeting, the in-call chat overlay and AI coaching suggestions should read the full DealDetails bundle from the local SQLite cache (not Convex) for zero-latency responses. This includes: prior meeting summaries/transcripts, SDR notes, company/contact profile, deal stage, prep dossier — everything on the DealDetails page. Depends on: 1.1 storage unification (which pre-loads SQLite cache for upcoming meetings). Currently the overlay only gets a limited `dealContext` blob fetched at startMeeting time. | Phase 1, after 1.1 |
 | 1.18 | **Attendee name labeling for 1:1 calls** — when a calendar event has exactly 2 attendees (Kate + 1 guest), label the "Interviewer" transcript segments with the guest's name from the calendar event (e.g., "John Smith" instead of "Interviewer"). Simple string substitution at display time in MeetingDetails — no diarization needed since there's only one remote voice. | Phase 1 |
+| 1.22 | **Weekly calendar view in main UI** — replace the top activity feed widgets (ad/prep image, calendar connected image) with a Google Calendar–style week view. Events from the same 3 calendars (Matria, Scalable, Family) with the same colors and RSVP status icons as the menu bar feed. Event height = duration. Click event → navigate to DealDetails (same as clicking a meeting in the feed). Two modes: **Clean** (same blocklist as menu bar — no blocks/out-of-office) and **Everything** (all 3 calendars unfiltered, like Google Calendar week view with 3 subcalendars visible). Toggle between modes in the header. | 2026-04-22 |
+| 1.23 | **Calendar tray settings UI** — Settings panel for the menu bar tray. Three controls: (a) calendar selector (checkboxes for each synced calendar/subcalendar — which ones show in the tray); (b) "Preview upcoming event" timing picker — At start of event / 15min before / 30min / 1hr / 4hr / 8hr / 12hr / 24hr / Always (like Notion Calendar's UI); (c) editable blocklist (textarea of words/phrases to exclude, currently hardcoded as: am out, pm out, sat out, sun out, do not book, no booking, no bookings, morning meeting block). | 2026-04-22 |
+| 1.24 | **Monthly view + day agenda view** — additional calendar views to complement the weekly view (1.22). Day agenda = vertical list of the day's events with same color/RSVP data. Month = grid with event chips per day. Same clean/everything toggle. | Next up after 1.22 |
 | 1.15 | **Ratchet existing Convex tables into HubSpot-ID compliance** — per the canonical linkage rule, every sales-related table must denormalize `hubspot_contact_id`. The Stage 0 additions (`sdr_notes`, `natively_*`) are compliant. The legacy tables (`meetings`, `call_transcripts`, `deals`) are not — they only carry Convex `_id` FKs. Plan: (a) add optional `hubspot_contact_id` field + `by_hubspot_contact` index to each, (b) update every writer (`zoom-transcript-sync`, `discovery-transcript-sync`, `convex/http.ts` sheet-sync handler, HubSpot deal sync webhook, meeting outcome flows) to resolve + pass through HubSpot ID on write, (c) run a one-time backfill mutation that walks existing rows, looks up contact via `contact_id`, patches in `hubspot_contact_id`. No breaking changes to reads — old consumers that use Convex `_id` keep working; new consumers that want stable cross-system linkage use the new index. Do this BEFORE writing the DealDetails backend query (Stage 1 of 1.13) since that query will benefit from querying by HubSpot ID for stability. | Phase 1, before 1.13 Stage 1 |
 
 ### Phase 2 — meeting lifecycle popups + task blocks
@@ -552,6 +558,20 @@ Separate session. Real build is the deal grading assessment — rubric + scoring
 ---
 
 ## Completed — shipped items (reverse chronological)
+
+### 2026-04-22 — menu bar tray calendar
+
+~~**Matria OAuth credential wiring**~~ — switched credential lookup from `GOOGLE_*` to `NATIVELY_*` env vars in `CalendarManager.ts` (`NATIVELY_CLIENT_ID`, `NATIVELY_CLIENT_SECRET`, `NATIVELY_REFRESH_TOKEN` from `~/gobot/.env`). Covers kate@matriapartners.com across all 3 calendars (Matria, Scalable, Family). — shipped 2026-04-22
+
+~~**OAuth token endpoint fix (form-encoding)**~~ — `refreshAccessToken()` + `exchangeCodeForToken()` were posting JSON bodies to `https://oauth2.googleapis.com/token`. Google requires `application/x-www-form-urlencoded`. Both methods now use `new URLSearchParams({...}).toString()` with `Content-Type: application/x-www-form-urlencoded`. Previous requests silently returned no access token. — shipped 2026-04-22
+
+~~**Tray text visible on launch**~~ — `nativeImage.createEmpty()` produces a zero-size image; macOS silently drops zero-size status bar items so `setTitle()` had nowhere to render. Fixed: 1×1 transparent PNG via `nativeImage.createFromDataURL(...)` in `setupCalendarTray()`. `setImmediate()` emit of `connection-changed` from `loadTokens()` ensures tray updates immediately when a valid stored token is loaded (avoids waiting up to 30s for the poll interval). — shipped 2026-04-22
+
+~~**Event blocklist filter**~~ — case-insensitive filter removes clutter events from the menu bar: "am out", "pm out", "sat out", "sun out", "do not book", "no booking", "no bookings", "morning meeting block". Also removed the `if (!link) continue` gate that was incorrectly filtering out every event without a Zoom/Meet link (personal meetings, in-person events, etc. were invisible). Result: 29 real events vs. 49 before (blocklist) vs. 0 (link gate bug). — shipped 2026-04-22
+
+~~**Calendar color map default color**~~ — `this.calendarColorMap.set(cal.id, hex ?? '#4A90D9')` so calendars with no `backgroundColor` or `colorId` still appear in the map with a fallback blue instead of being silently skipped. — shipped 2026-04-22
+
+---
 
 ### 2026-04-20 — v2.5.0 port session
 

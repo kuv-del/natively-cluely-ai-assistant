@@ -2152,7 +2152,11 @@ export class AppState {
     });
 
     // Tray 2: calendar text — shows meeting countdown, opens calendar popup on click
-    const emptyIcon = nativeImage.createEmpty();
+    // createEmpty() produces a zero-size image; macOS won't register a zero-size tray
+    // item in the status bar at all. Use a 1×1 transparent PNG instead so setTitle works.
+    const emptyIcon = nativeImage.createFromDataURL(
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
+    );
     this.calendarTray = new Tray(emptyIcon);
     this.calendarTray.setTitle('');
     this.calendarTray.on('click', () => {
@@ -2195,8 +2199,9 @@ export class AppState {
                 title = `${truncate(next.title)} · in ${hrs}h${rem > 0 ? ` ${rem}m` : ''}`;
             }
         }
+        console.log(`[Tray] setTitle called: "${title}" | calendarTray null: ${this.calendarTray == null}`);
         this.calendarTray?.setTitle(title);
-    }).catch(() => {});
+    }).catch((e) => { console.error('[Tray] updateTrayTitle error:', e); });
   }
 
   public updateTrayMenu() {
@@ -2804,6 +2809,13 @@ async function initializeApp() {
 
     calMgr.on('open-requested', () => {
       appState.centerAndShowWindow();
+    });
+
+    calMgr.on('connection-changed', (connected: boolean) => {
+      if (connected) {
+        console.log('[Main] Calendar connected — refreshing tray title');
+        appState.updateTrayTitle();
+      }
     });
 
     const meetingPopup = new MeetingPopupHelper();

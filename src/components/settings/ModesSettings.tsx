@@ -61,6 +61,9 @@ const ModesSettings: React.FC<Props> = ({ onClose }) => {
     const [newName, setNewName] = useState('');
     const [newTemplate, setNewTemplate] = useState<TemplateType>('sales');
     const [saving, setSaving] = useState(false);
+    const [editingName, setEditingName] = useState('');
+    const [editingContext, setEditingContext] = useState('');
+    const [contextSaved, setContextSaved] = useState(false);
 
     const api: any = (window as any).electronAPI;
 
@@ -80,6 +83,20 @@ const ModesSettings: React.FC<Props> = ({ onClose }) => {
         api.modesGetReferenceFiles(selected.id).then(setRefFiles);
         api.modesGetNoteSections(selected.id).then(setNoteSections);
     }, [selected?.id]);
+
+    // Sync editable fields when selected mode changes
+    useEffect(() => {
+        setEditingName(selected?.name ?? '');
+        setEditingContext(selected?.customContext ?? '');
+        setContextSaved(false);
+    }, [selected?.id]);
+
+    const handleSaveContext = async () => {
+        if (!selected) return;
+        await saveContext(selected, editingContext);
+        setContextSaved(true);
+        setTimeout(() => setContextSaved(false), 2000);
+    };
 
     const reloadSections = async () => {
         if (!selected) return;
@@ -249,8 +266,9 @@ const ModesSettings: React.FC<Props> = ({ onClose }) => {
                                 <div className="flex items-start justify-between">
                                     <div className="flex-1">
                                         <input
-                                            defaultValue={selected.name}
-                                            onBlur={e => saveName(selected, e.target.value)}
+                                            value={editingName}
+                                            onChange={e => setEditingName(e.target.value)}
+                                            onBlur={() => saveName(selected, editingName)}
                                             className="text-[18px] font-semibold text-text-primary bg-transparent border-b border-transparent hover:border-border-subtle focus:border-border-hover w-full py-1 outline-none" />
                                         <div className={`text-[12px] ${subtleText} mt-1`}>Template: {templateLabel(selected.templateType)}</div>
                                     </div>
@@ -277,13 +295,24 @@ const ModesSettings: React.FC<Props> = ({ onClose }) => {
                                 </div>
 
                                 <div>
-                                    <div className={`text-[12px] font-medium ${subtleText} mb-2`}>Custom Context</div>
+                                    <div className="flex items-center justify-between mb-2">
+                                        <div className={`text-[12px] font-medium ${subtleText}`}>Custom Context</div>
+                                        <button
+                                            onClick={handleSaveContext}
+                                            className={`flex items-center gap-1 px-3 py-1 text-[12px] rounded font-medium transition-all ${
+                                                contextSaved
+                                                    ? 'bg-green-500/15 text-green-600 dark:text-green-400 border border-green-500/30'
+                                                    : 'bg-text-primary text-bg-component hover:opacity-90'
+                                            }`}>
+                                            {contextSaved ? <><Check size={11} /> Saved</> : 'Save'}
+                                        </button>
+                                    </div>
                                     <div className={`text-[11px] ${tertiaryText} mb-2`}>
                                         Context injected into every AI response in this mode. Example: "Selling Scalable Elite ($33k/yr) to 7-figure service business owners. Discovery: revops/sales bottlenecks…"
                                     </div>
                                     <textarea
-                                        defaultValue={selected.customContext}
-                                        onBlur={e => saveContext(selected, e.target.value)}
+                                        value={editingContext}
+                                        onChange={e => setEditingContext(e.target.value)}
                                         placeholder="Add company, offer, positioning, or any persistent context…"
                                         rows={10}
                                         className={`w-full px-3 py-2 text-[13px] rounded-md ${inputCls}`} />

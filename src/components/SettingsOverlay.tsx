@@ -366,7 +366,7 @@ interface SettingsOverlayProps {
     isTrialActive?: boolean;
 }
 
-// Profile-level Custom Notes — global context injected into every AI call
+// Global context injected into every AI call regardless of mode
 const ProfileCustomNotesSection: React.FC = () => {
     const [content, setContent] = React.useState('');
     const [loaded, setLoaded] = React.useState(false);
@@ -2204,62 +2204,6 @@ const SettingsOverlay: React.FC<SettingsOverlayProps> = ({ isOpen, onClose, init
                                                     </div>
                                                 </div>
                                             )}
-                                        </div>
-                                    </div>
-
-                                    {/* Custom Context Card */}
-                                    <div className="mt-5">
-                                        <div className="bg-bg-item-surface rounded-xl border border-border-subtle">
-                                            <div className="p-5">
-                                                <div className="flex items-center gap-4 mb-4">
-                                                    <div className="w-10 h-10 rounded-lg bg-bg-input border border-border-subtle flex items-center justify-center text-text-tertiary shrink-0">
-                                                        <Pencil size={20} />
-                                                    </div>
-                                                    <div className="flex-1 min-w-0">
-                                                        <div className="flex items-center gap-2">
-                                                            <h4 className="text-sm font-bold text-text-primary">Custom Context</h4>
-                                                            {customNotesSaved && (
-                                                                <span className="text-[9px] font-bold text-emerald-500 px-1.5 py-0.5 bg-emerald-500/10 rounded-full border border-emerald-500/20 uppercase tracking-wide flex items-center gap-1">
-                                                                    <Check size={8} /> Saved
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                        <p className="text-[11px] text-text-secondary mt-0.5">
-                                                            Add any context the AI should know about you — saved across all sessions.
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                                <div className="space-y-3">
-                                                    <textarea
-                                                        value={customNotes}
-                                                        onChange={(e) => {
-                                                            const val = e.target.value;
-                                                            if (val.length > 4000) return;
-                                                            setCustomNotes(val);
-                                                            setCustomNotesSaved(false);
-                                                            if (customNotesDebounceRef.current) clearTimeout(customNotesDebounceRef.current);
-                                                            customNotesDebounceRef.current = setTimeout(async () => {
-                                                                try {
-                                                                    await window.electronAPI?.profileSaveNotes?.(val);
-                                                                    setCustomNotesSaved(true);
-                                                                    setTimeout(() => setCustomNotesSaved(false), 2000);
-                                                                } catch (_) {}
-                                                            }, 800);
-                                                        }}
-                                                        placeholder={`Examples:\n• Q4 ARR was $2.1M, grew 40% YoY — use when pitching growth story\n• Solved LRU Cache (LeetCode 146) with O(1) get/put using HashMap + doubly linked list\n• I prefer concise, direct answers without filler phrases\n• My target salary is $180k base — don't go below $160k`}
-                                                        rows={6}
-                                                        className="w-full bg-bg-input border border-border-subtle rounded-lg px-3 py-2.5 text-xs text-text-primary placeholder-text-tertiary focus:outline-none focus:border-accent-primary/50 focus:ring-1 focus:ring-accent-primary/20 transition-all resize-none leading-relaxed"
-                                                    />
-                                                    <div className="flex items-center justify-between px-0.5">
-                                                        <p className="text-[10px] text-text-tertiary">
-                                                            Auto-saved · Works with all modes and providers
-                                                        </p>
-                                                        <span className={`text-[10px] tabular-nums ${customNotes.length > 3600 ? 'text-amber-500' : 'text-text-tertiary'}`}>
-                                                            {customNotes.length}/4000
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                            </div>
                                         </div>
                                     </div>
 

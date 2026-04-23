@@ -30,9 +30,10 @@ function loadGobotEnv(): Record<string, string> {
 }
 const GOBOT_ENV = loadGobotEnv();
 
-const GOOGLE_CLIENT_ID = GOBOT_ENV.GOOGLE_CLIENT_ID || process.env.GOOGLE_CLIENT_ID || "YOUR_CLIENT_ID_HERE";
-const GOOGLE_CLIENT_SECRET = GOBOT_ENV.GOOGLE_CLIENT_SECRET || process.env.GOOGLE_CLIENT_SECRET || "YOUR_CLIENT_SECRET_HERE";
-const GOBOT_REFRESH_TOKEN = GOBOT_ENV.GOOGLE_REFRESH_TOKEN || process.env.GOOGLE_REFRESH_TOKEN || "";
+// Matria OAuth app credentials (kate@matriapartners.com, project: matria-natively)
+const GOOGLE_CLIENT_ID = GOBOT_ENV.NATIVELY_CLIENT_ID || GOBOT_ENV.GOOGLE_CLIENT_ID || process.env.NATIVELY_CLIENT_ID || process.env.GOOGLE_CLIENT_ID || "YOUR_CLIENT_ID_HERE";
+const GOOGLE_CLIENT_SECRET = GOBOT_ENV.NATIVELY_CLIENT_SECRET || GOBOT_ENV.GOOGLE_CLIENT_SECRET || process.env.NATIVELY_CLIENT_SECRET || process.env.GOOGLE_CLIENT_SECRET || "YOUR_CLIENT_SECRET_HERE";
+const GOBOT_REFRESH_TOKEN = GOBOT_ENV.NATIVELY_REFRESH_TOKEN || GOBOT_ENV.GOOGLE_REFRESH_TOKEN || process.env.NATIVELY_REFRESH_TOKEN || process.env.GOOGLE_REFRESH_TOKEN || "";
 const REDIRECT_URI = "http://localhost:11111/auth/callback";
 // Full calendar scope (read + write). Gobot's refresh token was originally
 // consented with this same scope, so token reuse is valid.
@@ -232,13 +233,16 @@ export class CalendarManager extends EventEmitter {
 
     private async exchangeCodeForToken(code: string) {
         try {
-            const response = await axios.post('https://oauth2.googleapis.com/token', {
-                code,
-                client_id: GOOGLE_CLIENT_ID,
-                client_secret: GOOGLE_CLIENT_SECRET,
-                redirect_uri: REDIRECT_URI,
-                grant_type: 'authorization_code'
-            });
+            const response = await axios.post('https://oauth2.googleapis.com/token',
+                new URLSearchParams({
+                    code,
+                    client_id: GOOGLE_CLIENT_ID,
+                    client_secret: GOOGLE_CLIENT_SECRET,
+                    redirect_uri: REDIRECT_URI,
+                    grant_type: 'authorization_code',
+                }).toString(),
+                { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+            );
 
             this.handleTokenResponse(response.data);
         } catch (error) {
@@ -293,12 +297,15 @@ export class CalendarManager extends EventEmitter {
         }
 
         try {
-            const response = await axios.post('https://oauth2.googleapis.com/token', {
-                client_id: GOOGLE_CLIENT_ID,
-                client_secret: GOOGLE_CLIENT_SECRET,
-                refresh_token: this.refreshToken,
-                grant_type: 'refresh_token'
-            });
+            const response = await axios.post('https://oauth2.googleapis.com/token',
+                new URLSearchParams({
+                    client_id: GOOGLE_CLIENT_ID,
+                    client_secret: GOOGLE_CLIENT_SECRET,
+                    refresh_token: this.refreshToken,
+                    grant_type: 'refresh_token',
+                }).toString(),
+                { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+            );
 
             this.handleTokenResponse(response.data);
         } catch (error) {
@@ -346,9 +353,12 @@ export class CalendarManager extends EventEmitter {
 
             if (this.accessToken && this.refreshToken) {
                 this.isConnected = true;
-                // Check expiry
                 if (this.expiryDate && Date.now() >= this.expiryDate) {
                     this.refreshAccessToken();
+                } else {
+                    // Token valid — notify listeners so tray updates immediately on launch
+                    // (avoids waiting for the 30s poll interval to show the first title)
+                    setImmediate(() => this.emit('connection-changed', true));
                 }
             }
         } catch (error) {
@@ -417,6 +427,11 @@ export class CalendarManager extends EventEmitter {
         }
 
         const events = await this.fetchEventsInternal();
+        console.log(`[CalendarManager] getUpcomingEvents: ${events.length} events returned`);
+        if (events.length > 0) {
+            const next = events.find(e => new Date(e.startTime).getTime() > Date.now());
+            console.log(`[CalendarManager] Next upcoming: ${next ? `${next.title} at ${next.startTime}` : 'none'}`);
+        }
         this.scheduleReminders(events);
         return events;
     }
@@ -433,7 +448,7 @@ export class CalendarManager extends EventEmitter {
                 // Only include calendars Kate owns — excludes shared/teammates calendars.
                 if (cal.accessRole !== 'owner' && !cal.primary) continue;
                 const hex = cal.backgroundColor || (cal.colorId && GCAL_COLOR_MAP[cal.colorId]) || null;
-                if (hex) this.calendarColorMap.set(cal.id, hex);
+                this.calendarColorMap.set(cal.id, hex ?? '#4A90D9');
             }
             console.log(`[CalendarManager] Loaded ${this.calendarColorMap.size} calendars`);
         } catch (e) {
@@ -486,8 +501,17 @@ export class CalendarManager extends EventEmitter {
                     const durationMins = (new Date(item.end.dateTime).getTime() - new Date(item.start.dateTime).getTime()) / 60000;
                     if (durationMins < 5) continue;
 
+                    // Skip blocked-time / internal events that clutter the menu bar.
+                    // Future: make this list editable in Settings.
+                    const title = (item.summary || '').toLowerCase();
+                    const BLOCKED_PHRASES = [
+                        'am out', 'pm out', 'sat out', 'sun out',
+                        'do not book', 'no booking', 'no bookings',
+                        'morning meeting block',
+                    ];
+                    if (BLOCKED_PHRASES.some(p => title.includes(p))) continue;
+
                     const link = this.resolveMeetingLink(item);
-                    if (!link) continue;
 
                     // Event-level color overrides calendar color.
                     const colorId: string | null = item.colorId ?? null;
