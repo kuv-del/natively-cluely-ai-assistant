@@ -430,7 +430,8 @@ export class CalendarManager extends EventEmitter {
             });
             this.calendarColorMap.clear();
             for (const cal of (response.data.items || [])) {
-                // backgroundColor is the hex Google Calendar stores; colorId is a legacy key.
+                // Only include calendars Kate owns — excludes shared/teammates calendars.
+                if (cal.accessRole !== 'owner' && !cal.primary) continue;
                 const hex = cal.backgroundColor || (cal.colorId && GCAL_COLOR_MAP[cal.colorId]) || null;
                 if (hex) this.calendarColorMap.set(cal.id, hex);
             }
