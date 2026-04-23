@@ -198,9 +198,13 @@ const EventContextModal: React.FC<EventContextModalProps> = ({
   const revenue = profile?.company?.company_revenue || null;
   const sdrOwner = profile?.deal?.sdr_owner_name || null;
 
-  // Event type pill (scalable calendar = call type pill; others = eventType label)
-  const pillLabel = event.eventType ? (EVENT_TYPE_LABELS[event.eventType] || null) : null;
+  // Apply same fallback as the calendar grid: scalable + external attendees → discovery
+  let displayedEventType = event.eventType;
+  if (event.calendarKind === 'scalable' && (!displayedEventType || displayedEventType === 'other')) {
+    if (event.attendees.some((a: any) => !a.self)) displayedEventType = 'discovery';
+  }
   const isScalable = event.calendarKind === 'scalable';
+  const pillLabel = displayedEventType && displayedEventType !== 'other' ? (EVENT_TYPE_LABELS[displayedEventType] || null) : null;
   const pillBg = isScalable ? '#7A9C70' : (
     event.calendarKind === 'matria' ? '#B8AC97' : '#9C9C9C'
   );
@@ -219,12 +223,15 @@ const EventContextModal: React.FC<EventContextModalProps> = ({
       style={{ position: 'fixed', left, top, width: modalW, background: v3.bg, border: `1px solid ${v3.borderLight}`, borderRadius: 16, boxShadow: '0 8px 40px rgba(0,0,0,0.2)', zIndex: 1000, fontFamily: v3.fontSans, overflow: 'visible' }}
       onClick={e => e.stopPropagation()}
     >
-      {/* Header: [rsvp] [title]  [dot] [trash] [×] */}
-      <div style={{ padding: '14px 14px 12px', borderBottom: `1px solid ${v3.borderLight}`, display: 'flex', alignItems: 'flex-start', gap: 6 }}>
-        {rsvpIcon && (
-          <span style={{ flexShrink: 0, fontSize: 13, marginTop: 2, color: guestStatus === 'declined' ? '#E53E3E' : v3.textMuted }}>{rsvpIcon}</span>
-        )}
-        <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: v3.dark, lineHeight: 1.35, wordBreak: 'break-word' }}>{event.title}</div>
+      {/* Header: [rsvp + title]  [dot] [trash] [×] */}
+      <div style={{ padding: '14px 14px 12px', borderBottom: `1px solid ${v3.borderLight}`, display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+        {/* RSVP + title: baseline-aligned so icon sits on the first line */}
+        <div style={{ flex: 1, display: 'flex', alignItems: 'baseline', gap: 5, minWidth: 0 }}>
+          {rsvpIcon && (
+            <span style={{ flexShrink: 0, fontSize: 12, color: guestStatus === 'declined' ? '#E53E3E' : v3.textMuted, lineHeight: 1 }}>{rsvpIcon}</span>
+          )}
+          <div style={{ fontSize: 13, fontWeight: 600, color: v3.dark, lineHeight: 1.35, wordBreak: 'break-word' }}>{event.title}</div>
+        </div>
 
         {/* Color dot */}
         <div style={{ position: 'relative', flexShrink: 0, marginTop: 3 }}>
