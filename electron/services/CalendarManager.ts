@@ -656,7 +656,7 @@ export class CalendarManager extends EventEmitter {
     // Generic PATCH for any subset of event fields. Caller provides the partial
     // body in Google Calendar API shape (e.g. { colorId: "9" }, { summary: "..." },
     // { start: { dateTime: "..." }, end: { dateTime: "..." } }).
-    public async updateEvent(eventId: string, partial: Record<string, any>): Promise<{ success: boolean; error?: string }> {
+    public async updateEvent(eventId: string, partial: Record<string, any>, calendarId: string = 'primary'): Promise<{ success: boolean; error?: string }> {
         if (!this.isConnected || !this.accessToken) {
             return { success: false, error: 'Calendar not connected' };
         }
@@ -666,20 +666,20 @@ export class CalendarManager extends EventEmitter {
         }
         try {
             await axios.patch(
-                `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(eventId)}`,
+                `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
                 partial,
                 { headers: { Authorization: `Bearer ${this.accessToken}` } }
             );
             return { success: true };
         } catch (error: any) {
-            console.error(`[CalendarManager] Failed to update event ${eventId}:`, error?.response?.data || error);
+            console.error(`[CalendarManager] Failed to update event ${eventId} on ${calendarId}:`, error?.response?.data || error);
             return { success: false, error: error?.message || 'Update failed' };
         }
     }
 
     // Convenience wrapper for the most common 2-way op: set the event color.
-    public async updateEventColor(eventId: string, colorId: string): Promise<{ success: boolean; error?: string }> {
-        return this.updateEvent(eventId, { colorId });
+    public async updateEventColor(eventId: string, colorId: string, calendarId: string = 'primary'): Promise<{ success: boolean; error?: string }> {
+        return this.updateEvent(eventId, { colorId }, calendarId);
     }
 
     public async deleteEvent(eventId: string, calendarId: string = 'primary'): Promise<{ success: boolean; error?: string }> {

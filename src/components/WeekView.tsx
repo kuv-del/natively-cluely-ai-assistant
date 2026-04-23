@@ -558,7 +558,8 @@ export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
     setContextEvent(prev => prev ? { ...prev, colorId, colorHex: hex } : prev);
     setShowColorPicker(false);
     if (colorId) {
-      (window as any).electronAPI?.calendarUpdateEventColor?.(contextEvent.id, colorId);
+      const calId = contextEvent.calendarId || 'primary';
+      (window as any).electronAPI?.calendarUpdateEventColor?.(contextEvent.id, colorId, calId);
     }
   }, [contextEvent]);
 

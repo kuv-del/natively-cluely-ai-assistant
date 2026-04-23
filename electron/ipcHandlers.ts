@@ -2432,9 +2432,9 @@ export function initializeIpcHandlers(appState: AppState): void {
     return CalendarManager.getInstance().updateEvent(eventId, partial);
   });
 
-  safeHandle("calendar-update-event-color", async (_, eventId: string, colorId: string) => {
+  safeHandle("calendar-update-event-color", async (_, eventId: string, colorId: string, calendarId?: string) => {
     const { CalendarManager } = require('./services/CalendarManager');
-    return CalendarManager.getInstance().updateEventColor(eventId, colorId);
+    return CalendarManager.getInstance().updateEventColor(eventId, colorId, calendarId || 'primary');
   });
 
   safeHandle("calendar-delete-event", async (_, eventId: string, calendarId?: string) => {
