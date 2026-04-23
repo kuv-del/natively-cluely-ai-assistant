@@ -2443,6 +2443,18 @@ export function initializeIpcHandlers(appState: AppState): void {
     return CalendarManager.getInstance().getUpcomingEvents();
   });
 
+  safeHandle("weekview:get-events", async (_, params: { weekStartIso: string; mode: 'clean' | 'everything' }) => {
+    const { CalendarManager } = require('./services/CalendarManager');
+    const start = new Date(params.weekStartIso);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 7);
+    return CalendarManager.getInstance().getEventsInRange({
+      startTime: start,
+      endTime: end,
+      filterBlocked: params.mode === 'clean',
+    });
+  });
+
   safeHandle("menubar:open-calendar-event", async (_, eventId: string) => {
     CalendarMenuBarHelper.close();
     const launcherWin = appState.getWindowHelper().getLauncherWindow();

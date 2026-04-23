@@ -127,6 +127,7 @@ interface ElectronAPI {
   updateMeetingSummary: (id: string, updates: { overview?: string, actionItems?: string[], keyPoints?: string[], actionItemsTitle?: string, keyPointsTitle?: string }) => Promise<boolean>
   onMeetingsUpdated: (callback: () => void) => () => void
   menubarGetEvents: () => Promise<any[]>
+  weekviewGetEvents: (params: { weekStartIso: string; mode: 'clean' | 'everything' }) => Promise<any[]>
   menubarOpenCalendarEvent: (eventId: string) => Promise<void>
   menubarFocusMain: () => Promise<void>
   onOpenCalendarEvent: (callback: (event: any, data: { calendarEventId: string }) => void) => () => void
@@ -1018,6 +1019,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   // Menu bar calendar popup
   menubarGetEvents: (): Promise<any[]> => ipcRenderer.invoke('menubar:get-events'),
+  weekviewGetEvents: (params: { weekStartIso: string; mode: 'clean' | 'everything' }) =>
+    ipcRenderer.invoke('weekview:get-events', params),
   menubarOpenCalendarEvent: (eventId: string) => ipcRenderer.invoke('menubar:open-calendar-event', eventId),
   menubarFocusMain: () => ipcRenderer.invoke('menubar:focus-main'),
   onOpenCalendarEvent: (callback: (event: any, data: { calendarEventId: string }) => void) => {

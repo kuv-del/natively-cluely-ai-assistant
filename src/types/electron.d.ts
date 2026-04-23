@@ -288,6 +288,7 @@ export interface ElectronAPI {
 
   // Menu bar calendar popup
   menubarGetEvents: () => Promise<any[]>
+  weekviewGetEvents: (params: { weekStartIso: string; mode: 'clean' | 'everything' }) => Promise<any[]>
   menubarOpenCalendarEvent: (eventId: string) => Promise<void>
   menubarFocusMain: () => Promise<void>
   onOpenCalendarEvent: (callback: (event: any, data: { calendarEventId: string }) => void) => () => void

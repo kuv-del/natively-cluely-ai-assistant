@@ -87,6 +87,11 @@ export const GCAL_COLOR_MAP: Record<string, string> = {
 
 export class CalendarManager extends EventEmitter {
     private static instance: CalendarManager;
+    private static readonly BLOCKED_PHRASES = [
+        'am out', 'pm out', 'sat out', 'sun out',
+        'do not book', 'no booking', 'no bookings',
+        'morning meeting block',
+    ];
     private accessToken: string | null = null;
     private refreshToken: string | null = null;
     private expiryDate: number | null = null;
@@ -436,6 +441,14 @@ export class CalendarManager extends EventEmitter {
         return events;
     }
 
+    public async getEventsInRange(opts: { startTime: Date; endTime: Date; filterBlocked?: boolean }): Promise<CalendarEvent[]> {
+        if (!this.isConnected || !this.accessToken) return [];
+        if (this.expiryDate && Date.now() >= this.expiryDate - 60000) {
+            await this.refreshAccessToken();
+        }
+        return this.fetchEventsInternal(opts);
+    }
+
     private async fetchCalendarList(): Promise<void> {
         if (!this.accessToken) return;
         try {
@@ -456,14 +469,18 @@ export class CalendarManager extends EventEmitter {
         }
     }
 
-    private async fetchEventsInternal(): Promise<CalendarEvent[]> {
+    private async fetchEventsInternal(opts: { startTime?: Date; endTime?: Date; filterBlocked?: boolean } = {}): Promise<CalendarEvent[]> {
         if (!this.accessToken) return [];
 
-        // Range: now → 7 days from now (flat 7-day window for menu bar).
-        const now = new Date();
-        const endOfWindow = new Date(now);
-        endOfWindow.setDate(endOfWindow.getDate() + 7);
-        endOfWindow.setHours(23, 59, 59, 999);
+        // Range: defaults to now → 7 days from now (flat 7-day window for menu bar).
+        const startTime = opts.startTime || new Date();
+        const endTime = opts.endTime || (() => {
+            const end = new Date(startTime);
+            end.setDate(end.getDate() + 7);
+            end.setHours(23, 59, 59, 999);
+            return end;
+        })();
+        const filterBlocked = opts.filterBlocked !== false; // default true
 
         // Fetch calendar list first time (so we have calendar-level colors).
         if (this.calendarColorMap.size === 0) {
@@ -471,8 +488,8 @@ export class CalendarManager extends EventEmitter {
         }
 
         const params = {
-            timeMin: now.toISOString(),
-            timeMax: endOfWindow.toISOString(),
+            timeMin: startTime.toISOString(),
+            timeMax: endTime.toISOString(),
             singleEvents: true,
             orderBy: 'startTime',
         };
@@ -501,15 +518,9 @@ export class CalendarManager extends EventEmitter {
                     const durationMins = (new Date(item.end.dateTime).getTime() - new Date(item.start.dateTime).getTime()) / 60000;
                     if (durationMins < 5) continue;
 
-                    // Skip blocked-time / internal events that clutter the menu bar.
-                    // Future: make this list editable in Settings.
+                    // Skip blocked-time / internal events that clutter the menu bar (if filterBlocked is true).
                     const title = (item.summary || '').toLowerCase();
-                    const BLOCKED_PHRASES = [
-                        'am out', 'pm out', 'sat out', 'sun out',
-                        'do not book', 'no booking', 'no bookings',
-                        'morning meeting block',
-                    ];
-                    if (BLOCKED_PHRASES.some(p => title.includes(p))) continue;
+                    if (filterBlocked && CalendarManager.BLOCKED_PHRASES.some(p => title.includes(p))) continue;
 
                     const link = this.resolveMeetingLink(item);
 
