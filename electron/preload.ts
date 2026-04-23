@@ -237,6 +237,7 @@ interface ElectronAPI {
   calendarRefresh: () => Promise<{ success: boolean; error?: string }>
   calendarUpdateEvent: (eventId: string, partial: Record<string, any>) => Promise<{ success: boolean; error?: string }>
   calendarUpdateEventColor: (eventId: string, colorId: string) => Promise<{ success: boolean; error?: string }>
+  calendarDeleteEvent: (eventId: string, calendarId?: string) => Promise<{ success: boolean; error?: string }>
 
   // Convex meeting profile lookup
   convexGetMeetingProfile: (calendarEventId: string) => Promise<{
@@ -1020,6 +1021,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   calendarRefresh: () => ipcRenderer.invoke('calendar-refresh'),
   calendarUpdateEvent: (eventId: string, partial: Record<string, any>) => ipcRenderer.invoke('calendar-update-event', eventId, partial),
   calendarUpdateEventColor: (eventId: string, colorId: string) => ipcRenderer.invoke('calendar-update-event-color', eventId, colorId),
+  calendarDeleteEvent: (eventId: string, calendarId?: string) => ipcRenderer.invoke('calendar-delete-event', eventId, calendarId),
   convexGetMeetingProfile: (calendarEventId: string) => ipcRenderer.invoke('convex-get-meeting-profile', calendarEventId),
   convexGetDealDetails: (contactId: string) => ipcRenderer.invoke('convex-get-deal-details', contactId),
   // backlog 1.10: retrieve deal context from SessionTracker for the live call

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useV3Tokens } from '../hooks/useV3Tokens';
 
@@ -19,12 +19,37 @@ interface CalendarEvent {
   // Task #15: block detection
   isBlock?: boolean;
   blockKind?: 'am_out' | 'pm_out' | 'sat_out' | 'sun_out' | 'other_block' | null;
+  // Extended fields from CalendarManager
+  link?: string;
+  location?: string | null;
+  calendarId?: string;
 }
 
 interface WeekViewProps {
   isLight: boolean;
   onEventClick: (event: CalendarEvent) => void;
 }
+
+const EVENT_COLORS: Array<{ name: string; hex: string; colorId: string | null }> = [
+  { name: 'Birch',      hex: '#C4A882', colorId: '6'  },
+  { name: 'Banana',     hex: '#D9C28A', colorId: '5'  },
+  { name: 'Graphite',   hex: '#9C9C9C', colorId: '8'  },
+  { name: 'Blueberry',  hex: '#6F87B5', colorId: '9'  },
+  { name: 'Tomato',     hex: '#B8625A', colorId: '11' },
+  { name: 'Cocoa',      hex: '#A07050', colorId: null },
+  { name: 'Lavender',   hex: '#BBB4D6', colorId: '1'  },
+  { name: 'Light Gray', hex: '#D4D4D4', colorId: null },
+];
+
+const DEAL_STAGE_LABELS: Record<string, string> = {
+  appointmentscheduled: 'Appt Scheduled',
+  qualifiedtobuy: 'Qualified',
+  presentationscheduled: 'Demo Scheduled',
+  decisionmakerboughtin: 'Decision Maker In',
+  contractsent: 'Contract Sent',
+  closedwon: 'Closed Won',
+  closedlost: 'Closed Lost',
+};
 
 // Muted GCAL Colors
 const MUTED_GCAL: Record<string, string> = {
@@ -117,6 +142,136 @@ const RSVP_ICON: Record<string, string> = {
   accepted: '☑',
 };
 
+interface EventContextModalProps {
+  event: CalendarEvent;
+  pos: { x: number; y: number };
+  profile: any;
+  profileLoading: boolean;
+  showColorPicker: boolean;
+  v3: any;
+  onClose: () => void;
+  onDelete: () => void;
+  onDeal: () => void;
+  onColorPickerToggle: () => void;
+  onColorChange: (colorId: string | null, hex: string) => void;
+}
+
+const EventContextModal: React.FC<EventContextModalProps> = ({
+  event, pos, profile, profileLoading, showColorPicker, v3,
+  onClose, onDelete, onDeal, onColorPickerToggle, onColorChange,
+}) => {
+  const modalW = 340;
+  const left = Math.min(pos.x + 8, window.innerWidth - modalW - 12);
+  const top = Math.min(pos.y - 10, window.innerHeight - 420);
+
+  const dotColor = mutedColorFor(event.colorId, event.colorHex);
+  const link = event.link;
+  const dateLabel = new Date(event.startTime).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  const timeLabel = `${formatTime(event.startTime)} – ${formatTime(event.endTime)}`;
+
+  const contactName = event.attendeeContactName
+    || (profile?.contact ? [profile.contact.first_name, profile.contact.last_name].filter(Boolean).join(' ') : null);
+  const companyName = event.attendeeCompany || profile?.company?.company_name || null;
+  const industry = profile?.company?.industry || null;
+  const dealStage = profile?.deal?.deal_stage || null;
+  const stageLabel = dealStage ? (DEAL_STAGE_LABELS[dealStage.toLowerCase().replace(/[\s_-]+/g, '')] || dealStage) : null;
+
+  return (
+    <div
+      style={{ position: 'fixed', left, top, width: modalW, background: v3.bg, border: `1px solid ${v3.borderLight}`, borderRadius: 14, boxShadow: '0 8px 40px rgba(0,0,0,0.2)', zIndex: 1000, fontFamily: v3.fontSans, overflow: 'visible' }}
+      onClick={e => e.stopPropagation()}
+    >
+      {/* Header */}
+      <div style={{ padding: '14px 14px 12px', borderBottom: `1px solid ${v3.borderLight}`, display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+        {/* Color dot */}
+        <div style={{ position: 'relative', flexShrink: 0, marginTop: 3 }}>
+          <button
+            onClick={onColorPickerToggle}
+            title="Change color"
+            style={{ width: 13, height: 13, borderRadius: '50%', background: dotColor, border: 'none', cursor: 'pointer', padding: 0, display: 'block', boxShadow: '0 0 0 2px rgba(0,0,0,0.08)' }}
+          />
+          {showColorPicker && (
+            <div style={{ position: 'absolute', top: 20, left: -4, background: v3.bg, border: `1px solid ${v3.borderLight}`, borderRadius: 10, padding: 10, display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, zIndex: 20, boxShadow: '0 4px 20px rgba(0,0,0,0.15)', width: 144 }}>
+              {EVENT_COLORS.map(c => (
+                <button key={c.name} title={c.name} onClick={() => onColorChange(c.colorId, c.hex)}
+                  style={{ width: 24, height: 24, borderRadius: '50%', background: c.hex, border: event.colorId === c.colorId ? `2px solid ${v3.dark}` : '2px solid transparent', cursor: 'pointer', padding: 0 }}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+        {/* Title */}
+        <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: v3.dark, lineHeight: 1.35, wordBreak: 'break-word' }}>{event.title}</div>
+        {/* Trash + X */}
+        <button onClick={onDelete} title="Delete event" style={{ padding: '2px 4px', background: 'none', border: 'none', cursor: 'pointer', color: v3.textMuted, fontSize: 14, lineHeight: 1, flexShrink: 0 }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
+        </button>
+        <button onClick={onClose} title="Close" style={{ padding: '2px 4px', background: 'none', border: 'none', cursor: 'pointer', color: v3.textMuted, fontSize: 18, lineHeight: 1, flexShrink: 0 }}>×</button>
+      </div>
+
+      {/* Date/time + link */}
+      <div style={{ padding: '10px 14px', borderBottom: `1px solid ${v3.borderLight}` }}>
+        <div style={{ fontSize: 13, fontWeight: 500, color: v3.dark }}>{dateLabel}</div>
+        <div style={{ fontSize: 12, color: v3.textMuted, marginTop: 1 }}>{timeLabel}</div>
+        {(link || event.location) && (
+          <div style={{ fontSize: 11, color: v3.textMuted, marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span>📍</span>
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {link ? (link.includes('zoom') ? 'Zoom' : link.includes('meet.google') ? 'Google Meet' : 'Video call') : event.location}
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* Profile */}
+      <div style={{ padding: '10px 14px', borderBottom: `1px solid ${v3.borderLight}`, minHeight: 72 }}>
+        {profileLoading && !contactName ? (
+          <div style={{ fontSize: 12, color: v3.textMuted, fontStyle: 'italic' }}>Loading...</div>
+        ) : (
+          <>
+            {contactName && <div style={{ fontSize: 14, fontWeight: 600, color: v3.dark, lineHeight: 1.3 }}>{contactName}</div>}
+            {companyName && (
+              <div style={{ fontSize: 12, color: v3.textMuted, marginTop: 2 }}>
+                {companyName}{industry ? ` · ${industry}` : ''}
+              </div>
+            )}
+            {stageLabel && (
+              <div style={{ display: 'inline-block', marginTop: 6, padding: '2px 8px', borderRadius: 999, background: '#7A9C70', color: '#fff', fontSize: 10, fontWeight: 700, letterSpacing: 0.4, textTransform: 'uppercase' }}>
+                {stageLabel}
+              </div>
+            )}
+            {event.calendarKind === 'scalable' && event.eventType && event.eventType !== 'other' && (
+              <div style={{ fontSize: 11, color: v3.textMuted, marginTop: stageLabel ? 4 : 6, textTransform: 'capitalize' }}>
+                {event.eventType}
+              </div>
+            )}
+            {!contactName && !companyName && !profileLoading && (
+              <div style={{ fontSize: 12, color: v3.textMuted, fontStyle: 'italic' }}>No profile data</div>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* Actions */}
+      <div style={{ padding: '12px 14px', display: 'flex', gap: 8 }}>
+        <button
+          onClick={() => link && (window as any).electronAPI?.openExternal?.(link)}
+          disabled={!link}
+          style={{ flex: 1, padding: '8px 0', borderRadius: 8, border: 'none', cursor: link ? 'pointer' : 'not-allowed', background: link ? v3.dark : v3.surface, color: link ? v3.bg : v3.textMuted, fontSize: 13, fontWeight: 600, opacity: link ? 1 : 0.45, transition: 'opacity 0.2s' }}
+        >
+          Start
+        </button>
+        <button
+          onClick={onDeal}
+          style={{ flex: 1, padding: '8px 0', borderRadius: 8, border: `1px solid ${v3.borderLight}`, cursor: 'pointer', background: 'transparent', color: v3.dark, fontSize: 13, fontWeight: 500 }}
+        >
+          Deal
+        </button>
+      </div>
+    </div>
+  );
+};
+
 export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
   const v3 = useV3Tokens();
   const [weekStart, setWeekStart] = useState<Date>(() => {
@@ -135,6 +290,13 @@ export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
   const [currentTime, setCurrentTime] = useState(new Date());
   const gridContainerRef = React.useRef<HTMLDivElement>(null);
   const timeGridRef = React.useRef<HTMLDivElement>(null);
+
+  // Right-click context modal
+  const [contextEvent, setContextEvent] = useState<CalendarEvent | null>(null);
+  const [contextPos, setContextPos] = useState({ x: 0, y: 0 });
+  const [contextProfile, setContextProfile] = useState<any>(null);
+  const [contextProfileLoading, setContextProfileLoading] = useState(false);
+  const [showColorPicker, setShowColorPicker] = useState(false);
 
   useEffect(() => {
     const interval = setInterval(() => setCurrentTime(new Date()), 60000);
@@ -319,6 +481,42 @@ export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
   const hourCount = endHour - startHour;
   const totalHeightPx = hourCount * hourPx;
 
+  const handleEventRightClick = useCallback((e: React.MouseEvent, ev: CalendarEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextEvent(ev);
+    setContextPos({ x: e.clientX, y: e.clientY });
+    setContextProfile(null);
+    setShowColorPicker(false);
+    setContextProfileLoading(true);
+    (window as any).electronAPI?.convexGetMeetingProfile?.(ev.id)
+      .then((p: any) => { setContextProfile(p); setContextProfileLoading(false); })
+      .catch(() => setContextProfileLoading(false));
+  }, []);
+
+  const handleColorChange = useCallback((colorId: string | null, hex: string) => {
+    if (!contextEvent) return;
+    setEvents(prev => prev.map(e => e.id === contextEvent.id ? { ...e, colorId, colorHex: hex } : e));
+    setContextEvent(prev => prev ? { ...prev, colorId, colorHex: hex } : prev);
+    setShowColorPicker(false);
+    if (colorId) {
+      (window as any).electronAPI?.calendarUpdateEventColor?.(contextEvent.id, colorId);
+    }
+  }, [contextEvent]);
+
+  const handleDeleteEvent = useCallback(async () => {
+    if (!contextEvent) return;
+    const calId = contextEvent.calendarId || 'primary';
+    setEvents(prev => prev.filter(e => e.id !== contextEvent.id));
+    setContextEvent(null);
+    await (window as any).electronAPI?.calendarDeleteEvent?.(contextEvent.id, calId);
+  }, [contextEvent]);
+
+  const closeContext = useCallback(() => {
+    setContextEvent(null);
+    setShowColorPicker(false);
+  }, []);
+
   // Is the viewed week the current week?
   const isViewingCurrentWeek = (() => {
     const weekEndDate = new Date(weekStart);
@@ -449,6 +647,7 @@ export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
                         <div
                           key={event.id}
                           onClick={() => onEventClick(event)}
+                          onContextMenu={(e) => handleEventRightClick(e, event)}
                           style={{
                             display: 'flex',
                             alignItems: 'flex-start',
@@ -694,6 +893,7 @@ export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
                         <div
                           key={event.id}
                           onClick={() => onEventClick(event)}
+                          onContextMenu={(e) => handleEventRightClick(e, event)}
                           style={{
                             position: 'absolute',
                             cursor: 'pointer',
@@ -878,6 +1078,26 @@ export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
             </div>
           )}
         </div>}
+
+      {/* Right-click context modal */}
+      {contextEvent && (
+        <>
+          <div style={{ position: 'fixed', inset: 0, zIndex: 998 }} onClick={closeContext} onContextMenu={e => { e.preventDefault(); closeContext(); }} />
+          <EventContextModal
+            event={contextEvent}
+            pos={contextPos}
+            profile={contextProfile}
+            profileLoading={contextProfileLoading}
+            showColorPicker={showColorPicker}
+            v3={v3}
+            onClose={closeContext}
+            onDelete={handleDeleteEvent}
+            onDeal={() => { onEventClick(contextEvent); closeContext(); }}
+            onColorPickerToggle={() => setShowColorPicker(p => !p)}
+            onColorChange={handleColorChange}
+          />
+        </>
+      )}
     </div>
   );
 };

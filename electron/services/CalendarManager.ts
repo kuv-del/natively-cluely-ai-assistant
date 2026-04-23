@@ -125,7 +125,8 @@ export class CalendarManager extends EventEmitter {
 
     private static detectBlockKind(title: string): { isBlock: boolean; blockKind: 'am_out' | 'pm_out' | 'sat_out' | 'sun_out' | 'other_block' | null } {
         const t = title.toLowerCase();
-        if (/\b(am out|morning meeting block)\b/.test(t)) return { isBlock: true, blockKind: 'am_out' };
+        if (/\bam out\b/.test(t)) return { isBlock: true, blockKind: 'am_out' };
+        if (/\bmorning meeting block\b/.test(t)) return { isBlock: true, blockKind: 'other_block' };
         if (/\bpm out\b/.test(t)) return { isBlock: true, blockKind: 'pm_out' };
         if (/\bsat out\b/.test(t)) return { isBlock: true, blockKind: 'sat_out' };
         if (/\bsun out\b/.test(t)) return { isBlock: true, blockKind: 'sun_out' };
@@ -679,6 +680,25 @@ export class CalendarManager extends EventEmitter {
     // Convenience wrapper for the most common 2-way op: set the event color.
     public async updateEventColor(eventId: string, colorId: string): Promise<{ success: boolean; error?: string }> {
         return this.updateEvent(eventId, { colorId });
+    }
+
+    public async deleteEvent(eventId: string, calendarId: string = 'primary'): Promise<{ success: boolean; error?: string }> {
+        if (!this.isConnected || !this.accessToken) {
+            return { success: false, error: 'Calendar not connected' };
+        }
+        if (this.expiryDate && Date.now() >= this.expiryDate - 60000) {
+            await this.refreshAccessToken();
+        }
+        try {
+            await axios.delete(
+                `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
+                { headers: { Authorization: `Bearer ${this.accessToken}` } }
+            );
+            return { success: true };
+        } catch (error: any) {
+            console.error(`[CalendarManager] Failed to delete event ${eventId}:`, error?.response?.data || error);
+            return { success: false, error: error?.message || 'Delete failed' };
+        }
     }
 
     // Intelligent Link Extraction

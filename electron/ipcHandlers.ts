@@ -2437,6 +2437,11 @@ export function initializeIpcHandlers(appState: AppState): void {
     return CalendarManager.getInstance().updateEventColor(eventId, colorId);
   });
 
+  safeHandle("calendar-delete-event", async (_, eventId: string, calendarId?: string) => {
+    const { CalendarManager } = require('./services/CalendarManager');
+    return CalendarManager.getInstance().deleteEvent(eventId, calendarId);
+  });
+
   // ── Menu bar calendar popup ──────────────────────────────────────────────
   safeHandle("menubar:get-events", async () => {
     const { CalendarManager } = require('./services/CalendarManager');
