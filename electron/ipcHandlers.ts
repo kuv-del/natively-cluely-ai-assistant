@@ -3420,6 +3420,13 @@ export function initializeIpcHandlers(appState: AppState): void {
       }
     }
 
+    if (!secret) {
+      console.warn(
+        "[ask:gobot] GATEWAY_SECRET not found in env or ~/gobot/.env — GoBot /ask requests will be rejected with 401. " +
+        "Add GATEWAY_SECRET to ~/.zshenv or ensure ~/gobot/.env exists."
+      );
+    }
+
     let res: Response;
     try {
       res = await fetch(`${gobotUrl}/ask`, {
