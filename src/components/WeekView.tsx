@@ -697,8 +697,7 @@ export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
                           default:            return { bg: '#9C9C9C', fg: '#FFFFFF' };
                         }
                       })();
-                      const pillLabelMap = { demo: 'Demo', discovery: 'Disc', followup: 'Fup', appointment: 'Appt', school: 'School', task: 'Task', fun: 'Fun', fyi: 'FYI' } as const;
-                      const pillLabel = displayedEventType && displayedEventType in pillLabelMap ? pillLabelMap[displayedEventType as keyof typeof pillLabelMap] : '';
+                      const pillLabel = displayedEventType && displayedEventType !== 'other' ? (EVENT_TYPE_LABELS[displayedEventType] || '') : '';
                       const guestStatus = getGuestStatus(event);
                       const rsvpIcon = guestStatus !== 'none' ? RSVP_ICON[guestStatus] : '';
 
@@ -733,7 +732,7 @@ export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
                               <div style={{ fontSize: 11, color: v3.textMuted, marginTop: 2 }}>{event.attendeeCompany}</div>
                             )}
                             {pillLabel && (
-                              <div style={{ display: 'inline-block', marginTop: 5, padding: '1px 6px', borderRadius: 999, background: pillColors.bg, color: pillColors.fg, fontSize: 9, fontWeight: 700, letterSpacing: 0.3, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
+                              <div style={{ display: 'inline-block', marginTop: 4, padding: '2px 7px', borderRadius: 999, background: pillColors.bg, color: pillColors.fg, fontSize: 9, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', maxWidth: '100%', textOverflow: 'ellipsis' }}>
                                 {pillLabel}
                               </div>
                             )}
@@ -942,8 +941,7 @@ export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
                         }
                       })();
 
-                      const pillLabelMap = { demo: 'Demo', discovery: 'Disc', followup: 'Fup', appointment: 'Appt', school: 'School', task: 'Task', fun: 'Fun', fyi: 'FYI' } as const;
-                      const pillLabel = displayedEventType && displayedEventType in pillLabelMap ? pillLabelMap[displayedEventType as keyof typeof pillLabelMap] : '';
+                      const pillLabel = displayedEventType && displayedEventType !== 'other' ? (EVENT_TYPE_LABELS[displayedEventType] || '') : '';
                       const rsvpIcon = guestStatus !== 'none' ? RSVP_ICON[guestStatus] : '';
 
                       const isPast = isViewingCurrentWeek && new Date(event.endTime) < currentTime;
@@ -988,20 +986,8 @@ export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
                                 {companyLine}
                               </div>
                             )}
-                            {showPill && (
-                              <div style={{
-                                display: 'inline-block',
-                                marginTop: 2,
-                                padding: '1px 6px',
-                                borderRadius: 999,
-                                background: pillColors.bg,
-                                color: pillColors.fg,
-                                fontSize: 9,
-                                fontWeight: 700,
-                                letterSpacing: 0.3,
-                                textTransform: 'uppercase',
-                                whiteSpace: 'nowrap',
-                              }}>
+                            {showPill && pillLabel && (
+                              <div style={{ display: 'inline-block', marginTop: 2, padding: '2px 6px', borderRadius: 999, background: pillColors.bg, color: pillColors.fg, fontSize: 9, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', maxWidth: '100%', textOverflow: 'ellipsis' }}>
                                 {pillLabel}
                               </div>
                             )}
