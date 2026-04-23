@@ -2441,8 +2441,8 @@ export function initializeIpcHandlers(appState: AppState): void {
   safeHandle("menubar:get-events", async () => {
     const { CalendarManager } = require('./services/CalendarManager');
     const events = await CalendarManager.getInstance().getUpcomingEvents();
-    // Filter out all-day events from menu bar
-    return events.filter((e: any) => !e.isAllDay);
+    // Filter out all-day events and blocks from menu bar
+    return events.filter((e: any) => !e.isAllDay && !e.isBlock);
   });
 
   safeHandle("weekview:get-events", async (_, params: { weekStartIso: string; mode: 'clean' | 'everything' }) => {

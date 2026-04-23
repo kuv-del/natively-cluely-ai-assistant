@@ -15,6 +15,9 @@ interface CalendarEvent {
   attendeeContactName?: string | null;
   attendeeCompany?: string | null;
   isAllDay?: boolean;
+  // Task #15: block detection
+  isBlock?: boolean;
+  blockKind?: 'am_out' | 'pm_out' | 'sat_out' | 'sun_out' | 'other_block' | null;
 }
 
 interface WeekViewProps {
@@ -73,7 +76,9 @@ const AM_OUT_PHRASES = ['am out', 'morning meeting block'];
 const PM_OUT_PHRASES = ['pm out'];
 
 function computeTimeRange(events: CalendarEvent[]): { startHour: number; endHour: number } {
-  const timed = events.filter(e => !e.isAllDay);
+  // Only real events drive the time range. Blocks (am out / pm out / do not book / etc.)
+  // and all-day items are excluded — they exist as boundary lines but don't expand the grid.
+  const timed = events.filter(e => !e.isAllDay && !e.isBlock);
   if (timed.length === 0) return { startHour: 7, endHour: 21 };
 
   const startCandidates = timed
@@ -202,18 +207,34 @@ export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
   });
 
   const timedEvents: CalendarEvent[] = [];
+  const blockEvents: CalendarEvent[] = [];
   const allDayEvents: CalendarEvent[] = [];
 
   events.forEach(event => {
-    if (event.isAllDay) {
+    if (event.isAllDay && !event.isBlock) {
       allDayEvents.push(event);
-    } else {
+    } else if (event.isBlock && !event.isAllDay) {
+      blockEvents.push(event);
+    } else if (!event.isAllDay && !event.isBlock) {
       timedEvents.push(event);
       const eventDate = new Date(event.startTime);
       eventDate.setHours(0, 0, 0, 0);
       const dayIdx = daysInWeek.findIndex(d => d.getTime() === eventDate.getTime());
       if (dayIdx !== -1) {
         eventsByDay[dayIdx].push(event);
+      }
+    }
+  });
+
+  // Track which days have all-day weekend blocks
+  const weekendBlockDays = new Set<number>();
+  blockEvents.forEach(block => {
+    if (block.isAllDay && (block.blockKind === 'sat_out' || block.blockKind === 'sun_out')) {
+      const blockDate = new Date(block.startTime);
+      blockDate.setHours(0, 0, 0, 0);
+      const dayIdx = daysInWeek.findIndex(d => d.getTime() === blockDate.getTime());
+      if (dayIdx !== -1) {
+        weekendBlockDays.add(dayIdx);
       }
     }
   });
@@ -317,7 +338,6 @@ export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
       <div style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column', position: 'relative' }}>
           {/* Day Headers */}
           <div style={{ display: 'flex', position: 'sticky', top: 0, zIndex: 10 }}>
-            <div style={{ width: 50, flexShrink: 0, background: v3.bg }}></div>
             {/* Timezone Column Headers */}
             <div style={{ display: 'flex', flexShrink: 0 }}>
               {TZ_COLUMNS.map(({ label }) => (
@@ -376,28 +396,7 @@ export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
 
           {/* Time Grid */}
           <div style={{ display: 'flex', flex: 1 }}>
-            {/* Time Axis */}
-            <div style={{ width: 50, flexShrink: 0, borderRight: `1px solid ${v3.borderLight}`, background: v3.bg }}>
-              {Array.from({ length: hourCount }).map((_, idx) => (
-                <div
-                  key={idx}
-                  style={{
-                    height: 48,
-                    borderBottom: `1px solid ${v3.borderLight}`,
-                    textAlign: 'right',
-                    paddingRight: 8,
-                    fontSize: 10,
-                    color: v3.textMuted,
-                    lineHeight: 1,
-                    paddingTop: 2,
-                  }}
-                >
-                  {format12HourTime(startHour + idx)}
-                </div>
-              ))}
-            </div>
-
-            {/* Timezone Columns */}
+            {/* Timezone Columns (serve as time axis) */}
             <div style={{ display: 'flex', flexShrink: 0 }}>
               {TZ_COLUMNS.map(({ label, tz }) => (
                 <div
@@ -446,6 +445,18 @@ export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
                     background: v3.bg,
                   }}
                 >
+                  {/* Weekend background tint for all-day blocks */}
+                  {weekendBlockDays.has(dayIdx) && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        inset: 0,
+                        background: 'rgba(27,27,27,0.04)',
+                        zIndex: 0,
+                      }}
+                    />
+                  )}
+
                   {/* Hour Grid Lines */}
                   {Array.from({ length: hourCount }).map((_, idx) => (
                     <div
@@ -557,6 +568,47 @@ export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
                       );
                     });
                   })}
+
+                  {/* Block Boundary Lines */}
+                  {blockEvents
+                    .filter(block => {
+                      const blockDate = new Date(block.startTime);
+                      blockDate.setHours(0, 0, 0, 0);
+                      return blockDate.getTime() === daysInWeek[dayIdx].getTime();
+                    })
+                    .map((block) => {
+                      if (block.blockKind === 'other_block') return null; // Skip rendering
+
+                      const blockStart = new Date(block.startTime);
+                      const blockEnd = new Date(block.endTime);
+
+                      let topPx: number;
+                      if (block.blockKind === 'am_out' || block.blockKind === 'sat_out' || block.blockKind === 'sun_out') {
+                        // Line at END of block
+                        topPx = (blockEnd.getHours() - startHour) * 48 + (blockEnd.getMinutes() / 60) * 48;
+                      } else if (block.blockKind === 'pm_out') {
+                        // Line at BEGINNING of block
+                        topPx = (blockStart.getHours() - startHour) * 48 + (blockStart.getMinutes() / 60) * 48;
+                      } else {
+                        return null;
+                      }
+
+                      return (
+                        <div
+                          key={`block-${block.id}`}
+                          style={{
+                            position: 'absolute',
+                            left: 0,
+                            right: 0,
+                            top: `${topPx}px`,
+                            height: 1,
+                            background: 'rgba(27,27,27,0.4)',
+                            zIndex: 5,
+                          }}
+                          title={block.title}
+                        />
+                      );
+                    })}
                 </div>
               );
             })}
@@ -566,9 +618,6 @@ export const WeekView: React.FC<WeekViewProps> = ({ onEventClick }) => {
           {allDayEvents.length > 0 && (
             <div style={{ borderTop: `1px solid ${v3.borderLight}`, padding: 6, maxHeight: 'auto', background: v3.bg }}>
               <div style={{ display: 'flex' }}>
-                <div style={{ width: 50, flexShrink: 0, fontSize: 10, color: v3.textMuted, paddingRight: 6, textAlign: 'right' }}>
-                  All day
-                </div>
                 {/* Timezone columns spacer */}
                 <div style={{ width: 36 * 3, flexShrink: 0 }}></div>
                 <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>

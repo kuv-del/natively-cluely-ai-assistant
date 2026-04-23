@@ -72,6 +72,8 @@ export interface CalendarEvent {
     attendeeContactName: string | null;  // first non-self attendee's parsed name
     attendeeCompany: string | null;      // first non-self attendee's email-domain-derived company
     isAllDay: boolean;         // true when start.date is set instead of start.dateTime
+    isBlock: boolean;          // true if this is a block (AM out, PM out, etc.)
+    blockKind: 'am_out' | 'pm_out' | 'sat_out' | 'sun_out' | 'other_block' | null;
 }
 
 // Google Calendar event color palette (from /calendar/v3/colors API).
@@ -119,6 +121,16 @@ export class CalendarManager extends EventEmitter {
         if (/\bfun\b/.test(t)) return 'fun';
         if (/\bfyi\b/.test(t)) return 'fyi';
         return 'other';
+    }
+
+    private static detectBlockKind(title: string): { isBlock: boolean; blockKind: 'am_out' | 'pm_out' | 'sat_out' | 'sun_out' | 'other_block' | null } {
+        const t = title.toLowerCase();
+        if (/\b(am out|morning meeting block)\b/.test(t)) return { isBlock: true, blockKind: 'am_out' };
+        if (/\bpm out\b/.test(t)) return { isBlock: true, blockKind: 'pm_out' };
+        if (/\bsat out\b/.test(t)) return { isBlock: true, blockKind: 'sat_out' };
+        if (/\bsun out\b/.test(t)) return { isBlock: true, blockKind: 'sun_out' };
+        if (/\b(do not book|no booking|no bookings)\b/.test(t)) return { isBlock: true, blockKind: 'other_block' };
+        return { isBlock: false, blockKind: null };
     }
 
     private static parseAttendeeContact(attendees: EventAttendee[]): { name: string | null; company: string | null } {
@@ -575,11 +587,8 @@ export class CalendarManager extends EventEmitter {
                         if (durationMins < 5) continue;
                     }
 
-                    // Skip blocked-time / internal events that clutter the menu bar (if filterBlocked is true).
-                    const title = (item.summary || '').toLowerCase();
-                    if (filterBlocked && CalendarManager.BLOCKED_PHRASES.some(p => title.includes(p))) continue;
-
                     const link = this.resolveMeetingLink(item);
+                    const { isBlock, blockKind } = CalendarManager.detectBlockKind(item.summary || '');
 
                     // Event-level color overrides calendar color.
                     const colorId: string | null = item.colorId ?? null;
@@ -617,6 +626,8 @@ export class CalendarManager extends EventEmitter {
                         attendeeContactName,
                         attendeeCompany,
                         isAllDay,
+                        isBlock,
+                        blockKind,
                     });
                 }
             } catch (error) {
