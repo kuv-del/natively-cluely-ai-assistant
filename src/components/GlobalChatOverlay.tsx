@@ -62,7 +62,7 @@ const UserMessage: React.FC<{ content: string }> = ({ content }) => (
     </motion.div>
 );
 
-const AssistantMessage: React.FC<{ content: string; isStreaming?: boolean }> = ({ content, isStreaming }) => {
+const AssistantMessage: React.FC<{ content: string; isStreaming?: boolean; model?: string }> = ({ content, isStreaming, model }) => {
     const [copied, setCopied] = useState(false);
 
     const handleCopy = async () => {
@@ -101,6 +101,11 @@ const AssistantMessage: React.FC<{ content: string; isStreaming?: boolean }> = (
                     {copied ? 'Copied' : 'Copy message'}
                 </button>
             )}
+            {!isStreaming && model && (
+                <div className="mt-1 text-[10px] text-text-tertiary/50 font-mono uppercase tracking-wide">
+                    {model}
+                </div>
+            )}
         </motion.div>
     );
 };
@@ -121,6 +126,10 @@ const GlobalChatOverlay: React.FC<GlobalChatOverlayProps> = ({
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
     const [query, setQuery] = useState('');
     const streamBuffer = useStreamBuffer();
+    const [conversationHistory, setConversationHistory] = useState<Array<{ role: 'user' | 'assistant'; content: string }>>([]);
+    const [statusMessage, setStatusMessage] = useState<string | null>(null);
+    const [activeModel, setActiveModel] = useState<string | null>(null);
+    const [modelBadgeId, setModelBadgeId] = useState<string | null>(null);
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const chatWindowRef = useRef<HTMLDivElement>(null);
@@ -168,7 +177,7 @@ const GlobalChatOverlay: React.FC<GlobalChatOverlayProps> = ({
         }
     };
 
-    // Submit question using global RAG
+    // Submit question using GoBot /ask as primary, RAG as fallback
     const submitQuestion = useCallback(async (question: string) => {
         if (!question.trim() || chatState === 'waiting_for_llm' || chatState === 'streaming_response') return;
 
@@ -180,8 +189,9 @@ const GlobalChatOverlay: React.FC<GlobalChatOverlayProps> = ({
         setMessages(prev => [...prev, userMessage]);
         setChatState('waiting_for_llm');
         setErrorMessage(null);
-        
-        // Scroll to bottom when user sends message
+        setStatusMessage('Connecting to GoBot...');
+        setActiveModel(null);
+
         setTimeout(() => {
             messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
         }, 50);
@@ -189,10 +199,8 @@ const GlobalChatOverlay: React.FC<GlobalChatOverlayProps> = ({
         const assistantMessageId = `assistant-${Date.now()}`;
 
         try {
-            // Add typing indicator delay (200ms) - makes the AI feel "thoughtful"
             await new Promise(resolve => setTimeout(resolve, 200));
 
-            // Create assistant message placeholder
             setMessages(prev => [...prev, {
                 id: assistantMessageId,
                 role: 'assistant',
@@ -200,68 +208,94 @@ const GlobalChatOverlay: React.FC<GlobalChatOverlayProps> = ({
                 isStreaming: true
             }]);
 
-            // Set up RAG streaming listeners (RAF-batched)
             streamBuffer.reset();
-            const tokenCleanup = window.electronAPI?.onRAGStreamChunk((data: { chunk: string }) => {
+
+            // Register GoBot event listeners
+            const chunkCleanup = (window.electronAPI as any)?.onGobotChunk((data: any) => {
                 setChatState('streaming_response');
+                setStatusMessage(null);
                 streamBuffer.appendToken(data.chunk, (content) => {
                     setMessages(prev => prev.map(msg =>
-                        msg.id === assistantMessageId
-                            ? { ...msg, content }
-                            : msg
+                        msg.id === assistantMessageId ? { ...msg, content } : msg
                     ));
                 });
             });
 
-            const doneCleanup = window.electronAPI?.onRAGStreamComplete(() => {
+            const statusCleanup = (window.electronAPI as any)?.onGobotStatus((data: any) => {
+                setStatusMessage(data.message);
+            });
+
+            const toolCleanup = (window.electronAPI as any)?.onGobotTool((data: any) => {
+                if (data.status === 'running') {
+                    setStatusMessage(`Using ${data.name.replace(/_/g, ' ')}…`);
+                } else if (data.status === 'done') {
+                    setStatusMessage(null);
+                }
+            });
+
+            const doneCleanup = (window.electronAPI as any)?.onGobotDone((data: any) => {
                 const finalContent = streamBuffer.getBufferedContent();
                 setMessages(prev => prev.map(msg =>
                     msg.id === assistantMessageId
                         ? { ...msg, content: finalContent, isStreaming: false }
                         : msg
                 ));
+                setConversationHistory(prev => [
+                    ...prev,
+                    { role: 'user', content: question },
+                    { role: 'assistant', content: finalContent }
+                ]);
+                setActiveModel(data.model);
+                setModelBadgeId(assistantMessageId);
                 setChatState('idle');
+                setStatusMessage(null);
                 streamBuffer.reset();
-                tokenCleanup?.();
+                chunkCleanup?.();
+                statusCleanup?.();
+                toolCleanup?.();
                 doneCleanup?.();
                 errorCleanup?.();
+                setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
             });
 
-            const errorCleanup = window.electronAPI?.onRAGStreamError((data: { error: string }) => {
-                console.error('[GlobalChat] RAG stream error:', data.error);
+            const errorCleanup = (window.electronAPI as any)?.onGobotError((data: any) => {
                 setMessages(prev => prev.filter(msg => msg.id !== assistantMessageId));
-                setErrorMessage("Couldn't get a response. Please try again.");
+                setErrorMessage(data.error);
                 setChatState('error');
+                setStatusMessage(null);
                 streamBuffer.reset();
-                tokenCleanup?.();
+                chunkCleanup?.();
+                statusCleanup?.();
+                toolCleanup?.();
                 doneCleanup?.();
                 errorCleanup?.();
             });
 
-            // Use global RAG query
-            const result = await window.electronAPI?.ragQueryGlobal(question);
+            const result = await (window.electronAPI as any)?.gobotQuery({
+                query: question,
+                conversationHistory,
+            });
 
-            if (result?.fallback) {
-                console.log("[GlobalChat] RAG unavailable, falling back to standard chat");
-                // Cleanup RAG listeners
-                tokenCleanup?.();
+            // If GoBot unreachable, fall back to local RAG
+            if (!result?.success) {
+                chunkCleanup?.();
+                statusCleanup?.();
+                toolCleanup?.();
                 doneCleanup?.();
                 errorCleanup?.();
+                setStatusMessage('Searching meetings...');
 
-                // Setup fallback listeners (Standard Gemini)
                 streamBuffer.reset();
-                const oldTokenCleanup = window.electronAPI?.onGeminiStreamToken((token: string) => {
+                const ragChunkCleanup = window.electronAPI?.onRAGStreamChunk((data: { chunk: string }) => {
                     setChatState('streaming_response');
-                    streamBuffer.appendToken(token, (content) => {
+                    setStatusMessage(null);
+                    streamBuffer.appendToken(data.chunk, (content) => {
                         setMessages(prev => prev.map(msg =>
-                            msg.id === assistantMessageId
-                                ? { ...msg, content }
-                                : msg
+                            msg.id === assistantMessageId ? { ...msg, content } : msg
                         ));
                     });
                 });
-
-                const oldDoneCleanup = window.electronAPI?.onGeminiStreamDone(() => {
+                const ragDoneCleanup = window.electronAPI?.onRAGStreamComplete(() => {
                     const finalContent = streamBuffer.getBufferedContent();
                     setMessages(prev => prev.map(msg =>
                         msg.id === assistantMessageId
@@ -269,25 +303,23 @@ const GlobalChatOverlay: React.FC<GlobalChatOverlayProps> = ({
                             : msg
                     ));
                     setChatState('idle');
+                    setStatusMessage(null);
                     streamBuffer.reset();
-                    oldTokenCleanup?.();
-                    oldDoneCleanup?.();
-                    oldErrorCleanup?.();
+                    ragChunkCleanup?.();
+                    ragDoneCleanup?.();
+                    ragErrorCleanup?.();
                 });
-
-                const oldErrorCleanup = window.electronAPI?.onGeminiStreamError((error: string) => {
-                    console.error('[GlobalChat] Gemini stream error:', error);
+                const ragErrorCleanup = window.electronAPI?.onRAGStreamError(() => {
                     setMessages(prev => prev.filter(msg => msg.id !== assistantMessageId));
-                    setErrorMessage("Couldn't get a response. Please check your settings.");
+                    setErrorMessage("GoBot unavailable and meetings search failed. Please try again.");
                     setChatState('error');
+                    setStatusMessage(null);
                     streamBuffer.reset();
-                    oldTokenCleanup?.();
-                    oldDoneCleanup?.();
-                    oldErrorCleanup?.();
+                    ragChunkCleanup?.();
+                    ragDoneCleanup?.();
+                    ragErrorCleanup?.();
                 });
-
-                // Call standard chat
-                await window.electronAPI?.streamGeminiChat(question, undefined, undefined, { skipSystemPrompt: false, ignoreKnowledgeMode: true });
+                await window.electronAPI?.ragQueryGlobal(question);
             }
 
         } catch (error) {
@@ -295,8 +327,9 @@ const GlobalChatOverlay: React.FC<GlobalChatOverlayProps> = ({
             setMessages(prev => prev.filter(msg => msg.id !== assistantMessageId));
             setErrorMessage("Something went wrong. Please try again.");
             setChatState('error');
+            setStatusMessage(null);
         }
-    }, [chatState]);
+    }, [chatState, conversationHistory]);
 
     return (
         <AnimatePresence
@@ -304,6 +337,10 @@ const GlobalChatOverlay: React.FC<GlobalChatOverlayProps> = ({
                 setChatState('idle');
                 setMessages([]);
                 setErrorMessage(null);
+                setConversationHistory([]);
+                setStatusMessage(null);
+                setActiveModel(null);
+                setModelBadgeId(null);
             }}
         >
             {isOpen && (
@@ -340,7 +377,10 @@ const GlobalChatOverlay: React.FC<GlobalChatOverlayProps> = ({
                         <div className="flex items-center justify-between px-4 py-3 border-b border-border-subtle shrink-0">
                             <div className="flex items-center gap-2 text-text-tertiary">
                                 <img src={nativelyIcon} className="w-3.5 h-3.5 force-black-icon opacity-50" alt="logo" />
-                                <span className="text-[13px] font-medium">Search all meetings</span>
+                                <span className="text-[13px] font-medium">Ask anything</span>
+                                {statusMessage && (
+                                    <span className="text-[11px] text-text-tertiary italic ml-2 animate-pulse">{statusMessage}</span>
+                                )}
                             </div>
                             <button
                                 onClick={onClose}
@@ -355,7 +395,12 @@ const GlobalChatOverlay: React.FC<GlobalChatOverlayProps> = ({
                             {messages.map((msg) => (
                                 msg.role === 'user'
                                     ? <UserMessage key={msg.id} content={msg.content} />
-                                    : <AssistantMessage key={msg.id} content={msg.content} isStreaming={msg.isStreaming} />
+                                    : <AssistantMessage
+                                        key={msg.id}
+                                        content={msg.content}
+                                        isStreaming={msg.isStreaming}
+                                        model={msg.id === modelBadgeId ? activeModel ?? undefined : undefined}
+                                      />
                             ))}
 
                             {chatState === 'waiting_for_llm' && <TypingIndicator />}
